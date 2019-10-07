@@ -2,6 +2,11 @@
 
 // hound is a wav file reading library
 extern crate hound;
+// file operations
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::io::BufReader;
+use std::io::BufRead;
 
 struct SoundFile {
     /// Sound samples
@@ -17,10 +22,22 @@ impl SoundFile {
         self.samples = reader.samples().collect::<Result<Vec<_>, _>>().unwrap();
     }
     fn search_for_file(&self) {
-
+        // FIXME: Find a way to remove .wav 
+        // name should be file_name with .txt instead of .wav
+        let name = format!("{}.txt",self.file_name);
+        let file = File::open(name).expect("Filen kunne ikke åbnes"); 
+        // FIXME: if a file doesn't exist error, generate_analysis_file should be called  
     }
-    fn generate_analysis_file(&self) {
-        
+    fn generate_analysis_file(&self, analysis: &Analysis) {
+        // FIXME: Find a way to remove .wav 
+        // name should be file_name with .txt instead of .wav
+        let name = format!("{}.txt",self.file_name);
+        //FIXME: Needs a way to stop if the file exists
+        let mut file = OpenOptions::new().write(true).open(name).expect("Filen kunne ikke åbnes");
+        // file should be filled with the attributes in the AnalysisFile created
+        //FIXME: Might have to handle the vector differently
+        let string : String = format!("{}\n{:?}", analysis.tempo, analysis.rhythm);
+        file.write(string.as_bytes()).expect("der kunne ikke skrives til filen");
     }
     fn bpm_from_rhythm(&self, file: &mut Analysis) {
         let mut transientsum = 0;
@@ -50,7 +67,11 @@ struct Analysis {
     /// Contains every time a transient is detected. Same time format as the SoundFile
     rhythm: Vec<f32>,
 }
-
+impl Analysis {
+    fn read_analysis_file(&mut self) {
+        
+    }
+}
 
 
 fn main() {
