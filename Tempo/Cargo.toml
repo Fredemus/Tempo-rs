@@ -5,3 +5,4 @@ authors = ["Fredemus <frederik.halkjaer1@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+hound = "3.4.0"
