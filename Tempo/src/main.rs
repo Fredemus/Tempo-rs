@@ -1,3 +1,9 @@
+/* 
+    TODO:
+    BPM frames for songs with different rhythms?
+    If there's been a transient in the last n samples, it shouldn't be able to detect more
+    Figure out how to read the analysis file into the variables
+*/
 /// This project is meant for opening a wave file and calculating its tempo. Meant as a prototype
 // hound is a wav file reading library
 extern crate hound;
@@ -9,6 +15,10 @@ use std::path::Path;
 // use std::io::BufRead;
 use std::collections::VecDeque;
 
+// note: static variables are thread-local
+// global variables for tweaking how the detection works
+static AVG_LEN: usize = 256;
+static MIN_TRANSIENT_GAP: usize = 256;
 struct SoundFile {
     /// Sound samples
     samples: Vec<f32>,
@@ -17,6 +27,7 @@ struct SoundFile {
     fs: usize,
     power_buf: VecDeque<f32>,
     analysis: Analysis,
+    transient_gap: usize,
 }
 #[allow(dead_code)]
 impl SoundFile {
@@ -34,23 +45,20 @@ impl SoundFile {
     }
     // GET THIS TO WORK
     fn search_for_file(&self) -> bool {
-        // FIXME: Find a way to remove .wav
         // name should be file_name with .txt instead of .wav
         let name = format!("{}.txt", self.file_name);
         Path::new(&name).exists()
     }
     fn generate_analysis_file(&mut self) {
-        self.remove_file_extension();
         println!("{}", self.file_name);
         let name = format!("{}.txt", self.file_name);
-        println!("{}", name);
         //FIXME: Only works if the file exists
         let mut file = OpenOptions::new()
             .write(true)
+            .create(true)
             .open(name)
             .expect("Filen kunne ikke åbnes");
         // file should be filled with the attributes in the AnalysisFile created
-        //FIXME: Might have to handle the vector differently
         let string: String = format!("{}\n{:?}", self.analysis.tempo, self.analysis.rhythm);
         file.write(string.as_bytes())
             .expect("Der kunne ikke skrives til filen");
@@ -71,10 +79,20 @@ impl SoundFile {
         // average transients per second * 60 gives us our bpm
         self.analysis.tempo =
             transientsum as f32 / (self.analysis.rhythm.len() as f32 / self.fs as f32 / 60.);
+        // limiting bpm to a rational interval 
+        while self.analysis.tempo > 200. || self.analysis.tempo < 70. {
+            if self.analysis.tempo > 200. {
+                self.analysis.tempo /= 2.;
+            }
+            else {
+                self.analysis.tempo *= 2.;
+            }
+        }
     }
     fn detect_transients(&mut self) {
         self.analysis.rhythm = vec![0.; self.samples.len()];
         let mut power_avg: f32;
+        let mut sum: usize = 0;
         for i in 0..self.samples.len() {
             self.power_buf.push_back(self.samples[i]);
             self.power_buf.pop_front();
@@ -82,16 +100,21 @@ impl SoundFile {
             power_avg = self.power_buf.iter().map(|&x| x.powi(2)).sum::<f32>()
                 / self.power_buf.len() as f32;
             // println!("power_avg is {}", power_avg);
-            if self.samples[i] - power_avg > 0.7 {
+            if self.samples[i] - power_avg > 0.7 && self.transient_gap > MIN_TRANSIENT_GAP {
                 self.analysis.rhythm[i] = 1.;
+                self.transient_gap = 0;
+                sum += 1;
             }
+            self.transient_gap += 1;
         }
+        println!("Sum is {}", sum);
     }
 }
 impl Default for SoundFile {
     fn default() -> SoundFile {
         let mut vecdeque = VecDeque::new();
-        for _i in 0..10 {
+        //rms found over 80 samples
+        for _i in 0..AVG_LEN { 
             vecdeque.push_back(0.);
         }
         SoundFile {
@@ -100,10 +123,11 @@ impl Default for SoundFile {
             fs: 44100,
             power_buf: vecdeque,
             analysis: Analysis::default(),
+            transient_gap: 0,
         }
     }
 }
-/// contains the samples that controls the lightshow. Found on background of SoundFile
+/// contains the information that controls the lightshow. Found on background of SoundFile
 struct Analysis {
     /// tempo in beats per minute
     tempo: f32,
