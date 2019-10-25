@@ -1,6 +1,6 @@
 /*
     TODO:
-    Move to gaps between transients and transient level for creation of analysis files
+    Move to samples to next transient and transient level for creation of analysis files
     https://stackoverflow.com/questions/30838358/what-is-the-correct-way-to-write-vecu16-content-to-a-file
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
@@ -21,7 +21,7 @@ use std::io::prelude::*;
 use std::io::Cursor;
 use std::path::Path;
 use std::collections::VecDeque;
-
+use std::fs;
 // note: static variables are thread-local
 // global variables for tweaking how the detection works
 static AVG_LEN: usize = 768;
@@ -31,7 +31,7 @@ struct SoundFile {
     /// Sound samples
     samples: Vec<f32>,
     //the name of the file that was read into SoundFile
-    file_name: String,
+    file_name: std::path::PathBuf,
     fs: usize,
     power_buf: VecDeque<f32>,
     analysis: Analysis,
@@ -41,32 +41,36 @@ struct SoundFile {
 #[allow(dead_code)]
 impl SoundFile {
     // splits the string in 2 at the . sign and discards everything behind it
-    fn remove_file_extension(&mut self) {
-        let split: Vec<&str> = self.file_name.splitn(2, '.').collect();
-        self.file_name = split[0].to_string();
-    }
+    // fn remove_file_extension(&mut self) {
+    //     let split: Vec<&str> = self.file_name.splitn(2, '.').collect();
+    //     self.file_name = split[0].to_string();
+    // }
     // FIXME: if the analysis file exists, it would be fine to just stream audio from the samples iterator
     // would save a lot of load time, since the collect takes forever
     // loads a wav file and saves the samples in it
-    fn load_sound(&mut self, path: String) {
+    fn load_sound(&mut self, path: std::path::PathBuf) {
         self.file_name = path;
-        let mut reader = hound::WavReader::open(self.file_name.clone()).unwrap();
+        // let path_clone;
+        // self.file_name.clone_into(path_clone);
+        let mut reader = hound::WavReader::open(&self.file_name).unwrap();
         self.samples = reader.samples().collect::<Result<Vec<_>, _>>().unwrap();
-        self.remove_file_extension();
+        self.file_name.set_extension("txt");
+        // self.remove_file_extension();
     }
     // checks if an analysis file exists for the loaded wav file
     fn search_for_file(&self) -> bool {
         // name should be file_name with .txt instead of .wav
-        let name = format!("{}.txt", self.file_name);
-        Path::new(&name).exists()
+        // let name = format!("{}.txt", self.file_name);
+        // println!("name: {:?}", name);
+        // let path = name.to_p 
+        self.file_name.exists()
     }
     // generates an analysis file and fills it with the relevant data
     fn generate_analysis_file(&mut self) {
-        let name = format!("{}.txt", self.file_name);
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
-            .open(name)
+            .open(&self.file_name)
             .expect("Filen kunne ikke åbnes");
         // file should be filled with the attributes in the AnalysisFile created
         // writing the vector into the analysis file with endianness specified. Should be safe?
@@ -82,11 +86,10 @@ impl SoundFile {
         //     .expect("Der kunne ikke skrives til filen");
     }
     fn read_analysis_file(&mut self) {
-        let name = format!("{}.txt", self.file_name);
         let mut file = OpenOptions::new()
             .read(true)
             .create(false)
-            .open(name)
+            .open(&self.file_name)
             .expect("Filen kunne ikke åbnes");
             // reading the raw bytes from file to a vector: (since Byteorder crate requires it)
             let mut buffer = Vec::new();
@@ -156,7 +159,7 @@ impl SoundFile {
         }
         // sorting the vector
         bpm_frames.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("All BPM frames: {:?}", bpm_frames);
+        // println!("All BPM frames: {:?}", bpm_frames);
         // Finding the median tempo
         self.analysis.tempo = bpm_frames[(bpm_frames.len() / 2)];
         println!("BPM is {}", self.analysis.tempo);
@@ -177,7 +180,7 @@ impl SoundFile {
             if current_sample.1.abs() - short_rms > SENSITIVITY
             // && self.transient_gap > AVG_LEN
             {
-                self.analysis.rhythm[current_sample.0] = 1.;
+                self.analysis.rhythm[current_sample.0] = current_sample.1.abs() - short_rms;
                 self.transient_no += 1;
                 self.transient_gap = 0;
                 // fast forwarding through the samples, since the next n samples won't have any transients anyway
@@ -220,7 +223,7 @@ impl Default for SoundFile {
         }
         SoundFile {
             samples: vec![0.],
-            file_name: format!(""),
+            file_name: std::path::PathBuf::new(),
             fs: 44100,
             power_buf: vecdeque,
             analysis: Analysis::default(),
@@ -249,17 +252,35 @@ impl Default for Analysis {
 
 fn main() {
     let mut sound = SoundFile::default();
+    // grabbing all files in Songs and adding their paths to a vector
+    let path = Path::new(r".\Songs");
+    let mut entries : Vec<std::path::PathBuf> = vec![];
+    println!("which of the songs do you want to play? Write a number");
+    for entry in fs::read_dir(path).expect("Unable to list") {
+        entries.push(entry.expect("unable to get entry").path());
+    }
+    for (i,entry) in entries.iter().enumerate() {
+        println!("{}: {}", i, entry.display());
+    }
+    //choose a sound:
+    let mut n = String::new();
+    std::io::stdin()
+        .read_line(&mut n)
+        .expect("failed to read input.");
+    let n: usize = n.trim().parse().expect("invalid input");
+    println!("playing song: {:?}", entries[n]);
+    // println!("{}", entries[1]);
     sound.load_sound(
         // r"C:\Users\rasmu\Documents\RustProjects\Projekt4\Tempo\Songs\Daft Punk - Da Funk.wav".to_string(),
-        r"C:\Users\rasmu\Documents\RustProjects\Projekt4\Tempo\Songs\busybeat100.wav".to_string(),
+        // r"C:\Users\rasmu\Documents\RustProjects\Projekt4\Tempo\Songs\busybeat100.wav".to_string(),
+        entries[n].clone()
     );
-
     if sound.search_for_file() != true {
         sound.detect_transients();
         sound.bpm_in_frames();
         sound.generate_analysis_file();
     } else {
-        println!("already exists boy");
+        println!("Analysis file already exists boy");
         sound.read_analysis_file();
         println!("BPM is {}", sound.analysis.tempo);
     }
