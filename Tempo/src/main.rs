@@ -1,31 +1,32 @@
 /*
     TODO:
-    BPM frames for songs with different rhythms?
-    If there's been a transient in the last n samples, it shouldn't be able to detect more
-    Figure out how to read the analysis file into the variables
     Move to gaps between transients and transient level for creation of analysis files
-
+    https://stackoverflow.com/questions/30838358/what-is-the-correct-way-to-write-vecu16-content-to-a-file
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
     Idea for a pattern: If there's no transients for a while, slowly sweep up when short-time RMS increases
-
+    parallelize by not loading the entire wav at once and just use the samples iterator?
 
 */
 /// This project is meant for opening a wave file and calculating its tempo. Meant as a prototype
 // hound is a wav file reading library
 extern crate hound;
+// byteorder helps create files the right way so they can be read on an ARM device (Raspberry Pi), since we can specify endianness
+extern crate byteorder;
+use byteorder::{WriteBytesExt, ReadBytesExt, LittleEndian};
 // file operations
 use std::fs::OpenOptions;
-use std::io::Write;
+// use std::io::{Write, BufWriter, BufReader};
+use std::io::prelude::*;
+use std::io::Cursor;
 use std::path::Path;
-// use std::io::BufReader;
-// use std::io::BufRead;
 use std::collections::VecDeque;
 
 // note: static variables are thread-local
 // global variables for tweaking how the detection works
-static AVG_LEN: usize = 512;
-static SENSITIVITY: f32 = 0.9;
+static AVG_LEN: usize = 768;
+static SKIP_AMT: usize = 4096;
+static SENSITIVITY: f32 = 0.7; // lower is more sensitive
 struct SoundFile {
     /// Sound samples
     samples: Vec<f32>,
@@ -34,8 +35,8 @@ struct SoundFile {
     fs: usize,
     power_buf: VecDeque<f32>,
     analysis: Analysis,
-    transient_gap: usize,
     transient_no: usize,
+    transient_gap: usize,
 }
 #[allow(dead_code)]
 impl SoundFile {
@@ -44,6 +45,8 @@ impl SoundFile {
         let split: Vec<&str> = self.file_name.splitn(2, '.').collect();
         self.file_name = split[0].to_string();
     }
+    // FIXME: if the analysis file exists, it would be fine to just stream audio from the samples iterator
+    // would save a lot of load time, since the collect takes forever
     // loads a wav file and saves the samples in it
     fn load_sound(&mut self, path: String) {
         self.file_name = path;
@@ -59,19 +62,44 @@ impl SoundFile {
     }
     // generates an analysis file and fills it with the relevant data
     fn generate_analysis_file(&mut self) {
-        println!("{}", self.file_name);
         let name = format!("{}.txt", self.file_name);
-        //FIXME: Only works if the file exists
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
             .open(name)
             .expect("Filen kunne ikke åbnes");
         // file should be filled with the attributes in the AnalysisFile created
-        let string: String = format!("{}\n{:?}", self.analysis.tempo, self.analysis.rhythm);
-        file.write(string.as_bytes())
-            .expect("Der kunne ikke skrives til filen");
+        // writing the vector into the analysis file with endianness specified. Should be safe?
+        let slice_f32: &[f32] = &*self.analysis.rhythm;
+        //writing in bpm
+        let _ = file.write_f32::<LittleEndian>(self.analysis.tempo).expect("Der kunne ikke skrives til filen");
+        // writing in the vector
+        for &n in slice_f32 {
+            let _ = file.write_f32::<LittleEndian>(n).expect("Der kunne ikke skrives til filen");
+        }
+        //let string: String = format!("{}\n{:?}", self.analysis.tempo, self.analysis.rhythm);
+        // file.write(string.as_bytes())
+        //     .expect("Der kunne ikke skrives til filen");
     }
+    fn read_analysis_file(&mut self) {
+        let name = format!("{}.txt", self.file_name);
+        let mut file = OpenOptions::new()
+            .read(true)
+            .create(false)
+            .open(name)
+            .expect("Filen kunne ikke åbnes");
+            // reading the raw bytes from file to a vector: (since Byteorder crate requires it)
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer).expect("couldn't read file");
+            //reading the raw bytes into rhythm
+            let mut reader = Cursor::new(buffer);
+            self.analysis.rhythm.clear();
+            for _i in 0..self.samples.len() {
+                self.analysis.rhythm.push(reader.read_f32::<LittleEndian>().unwrap())
+            }
+            self.analysis.tempo = self.analysis.rhythm.remove(0);
+    }
+
     fn bpm_from_rhythm(&mut self) {
         let mut transientsum = 0;
         for i in 0..self.analysis.rhythm.len() {
@@ -114,23 +142,21 @@ impl SoundFile {
             len += 1;
             // average transients per second * 60 gives us our bpm
             bpm_frames.push(1. / (len as f32 / self.fs as f32) * 60.);
-
-            // limiting bpm to a rational interval
-            // FIXME: Can this end in an infinite loop?
-            let current = bpm_frames.len() - 1;
-            println!("bpm of this frame is {}!", bpm_frames[current]);
-            while bpm_frames[current] > 200. || bpm_frames[current] < 70. {
-                if bpm_frames[current] < 1. {
-                    break;
-                } else if bpm_frames[current] > 200. {
-                    bpm_frames[current] /= 2.;
-                } else {
-                    bpm_frames[current] *= 2.;
-                }
+        }
+        // filtering out frames with a bpm over 300 FIXME: Maybe filter out too low bpms too?
+        // for (i, element) in bpm_frames.iter().enumerate() {
+        let mut toberemoved : Vec<usize> = vec![];
+        for i in 0..bpm_frames.len() {
+            if bpm_frames[i] > 300. {
+                toberemoved.push(i);
             }
+        }
+        for i in toberemoved.iter().rev() {
+            bpm_frames.remove(*i);
         }
         // sorting the vector
         bpm_frames.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("All BPM frames: {:?}", bpm_frames);
         // Finding the median tempo
         self.analysis.tempo = bpm_frames[(bpm_frames.len() / 2)];
         println!("BPM is {}", self.analysis.tempo);
@@ -139,20 +165,48 @@ impl SoundFile {
         self.analysis.rhythm = vec![0.; self.samples.len()];
         let mut short_rms: f32;
         self.transient_no = 0;
-        for i in 0..self.samples.len() {
-            self.power_buf.push_back(self.samples[i]);
+        let mut iter = self.samples.iter().enumerate();
+        let mut current: Option<(usize, &f32)> = iter.next();
+        while current != None {
+            let mut current_sample = current.unwrap();
+            self.power_buf.push_back(current_sample.1.powi(2));
             self.power_buf.pop_front();
             // finding rms over the buffer
-            short_rms = self.power_buf.iter().map(|&x| x.powi(2)).sum::<f32>()
-                / self.power_buf.len() as f32;
-            // println!("short_rms is {}", short_rms);
-            //
-            if self.samples[i].abs() - short_rms > SENSITIVITY && self.transient_gap > AVG_LEN {
-                self.analysis.rhythm[i] = 1.;
-                self.transient_gap = 0;
+            short_rms = (self.power_buf.iter().map(|&x| x).sum::<f32>()
+                / self.power_buf.len() as f32).sqrt();
+            if current_sample.1.abs() - short_rms > SENSITIVITY
+            // && self.transient_gap > AVG_LEN
+            {
+                self.analysis.rhythm[current_sample.0] = 1.;
                 self.transient_no += 1;
+                self.transient_gap = 0;
+                // fast forwarding through the samples, since the next n samples won't have any transients anyway
+                current = iter.nth(SKIP_AMT);
+                if current == None {
+                    break;
+                }
+                else {
+                    current_sample = current.unwrap();
+                }
+                // skipping the power_buf forward too
+                self.power_buf.clear();
+                if (current_sample.0 as isize - AVG_LEN as isize)  < 0 {
+                    for _i in 0..AVG_LEN {
+                        self.power_buf.push_back(0.);
+                    }
+                    for j in 0..current_sample.0 {
+                        self.power_buf.push_back(self.samples[j].powi(2));
+                        self.power_buf.pop_front();
+                    }
+                }
+                // is this even faster? is there any reason to have an if-else in the loop?
+                else {
+                    self.power_buf.extend((&self.samples[current_sample.0-AVG_LEN..current_sample.0]).into_iter().map(|x| x.powi(2)));
+                }
+
             }
             self.transient_gap += 1;
+            current = iter.next();
         }
         println!("Sum is {}", self.transient_no);
     }
@@ -170,8 +224,8 @@ impl Default for SoundFile {
             fs: 44100,
             power_buf: vecdeque,
             analysis: Analysis::default(),
-            transient_gap: 0,
             transient_no: 0,
+            transient_gap: 0,
         }
     }
 }
@@ -183,7 +237,6 @@ struct Analysis {
     rhythm: Vec<f32>,
 }
 impl Analysis {
-    fn _read_analysis_file(&mut self) {}
 }
 impl Default for Analysis {
     fn default() -> Analysis {
@@ -196,7 +249,6 @@ impl Default for Analysis {
 
 fn main() {
     let mut sound = SoundFile::default();
-    // let mut analysis = Analysis { tempo: 2000., rhythm: vec![0.]};
     sound.load_sound(
         // r"C:\Users\rasmu\Documents\RustProjects\Projekt4\Tempo\Songs\Daft Punk - Da Funk.wav".to_string(),
         r"C:\Users\rasmu\Documents\RustProjects\Projekt4\Tempo\Songs\busybeat100.wav".to_string(),
@@ -207,10 +259,8 @@ fn main() {
         sound.bpm_in_frames();
         sound.generate_analysis_file();
     } else {
-        sound.detect_transients();
-        sound.bpm_in_frames();
-        println!("BPM is {}", sound.analysis.tempo);
-        sound.generate_analysis_file();
         println!("already exists boy");
+        sound.read_analysis_file();
+        println!("BPM is {}", sound.analysis.tempo);
     }
 }
