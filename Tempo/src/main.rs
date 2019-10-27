@@ -2,6 +2,7 @@
     TODO:
     Move to samples to next transient and transient level for creation of analysis files
     https://stackoverflow.com/questions/30838358/what-is-the-correct-way-to-write-vecu16-content-to-a-file
+
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
     Idea for a pattern: If there's no transients for a while, slowly sweep up when short-time RMS increases
@@ -25,7 +26,7 @@ use std::fs;
 // note: static variables are thread-local
 // global variables for tweaking how the detection works
 static AVG_LEN: usize = 768;
-static SKIP_AMT: usize = 4096;
+static SKIP_AMT: usize = 4096; //SKIP_AMT should never be less than AVG_LEN
 static SENSITIVITY: f32 = 0.7; // lower is more sensitive
 struct SoundFile {
     /// Sound samples
@@ -38,7 +39,7 @@ struct SoundFile {
     transient_no: usize,
     transient_gap: usize,
 }
-#[allow(dead_code)]
+// #[allow(dead_code)]
 impl SoundFile {
     // splits the string in 2 at the . sign and discards everything behind it
     // fn remove_file_extension(&mut self) {
@@ -50,19 +51,13 @@ impl SoundFile {
     // loads a wav file and saves the samples in it
     fn load_sound(&mut self, path: std::path::PathBuf) {
         self.file_name = path;
-        // let path_clone;
-        // self.file_name.clone_into(path_clone);
+        self.file_name.set_extension("wav");
         let mut reader = hound::WavReader::open(&self.file_name).unwrap();
         self.samples = reader.samples().collect::<Result<Vec<_>, _>>().unwrap();
         self.file_name.set_extension("txt");
-        // self.remove_file_extension();
     }
     // checks if an analysis file exists for the loaded wav file
     fn search_for_file(&self) -> bool {
-        // name should be file_name with .txt instead of .wav
-        // let name = format!("{}.txt", self.file_name);
-        // println!("name: {:?}", name);
-        // let path = name.to_p 
         self.file_name.exists()
     }
     // generates an analysis file and fills it with the relevant data
@@ -81,9 +76,6 @@ impl SoundFile {
         for &n in slice_f32 {
             let _ = file.write_f32::<LittleEndian>(n).expect("Der kunne ikke skrives til filen");
         }
-        //let string: String = format!("{}\n{:?}", self.analysis.tempo, self.analysis.rhythm);
-        // file.write(string.as_bytes())
-        //     .expect("Der kunne ikke skrives til filen");
     }
     fn read_analysis_file(&mut self) {
         let mut file = OpenOptions::new()
@@ -103,7 +95,7 @@ impl SoundFile {
             self.analysis.tempo = self.analysis.rhythm.remove(0);
     }
 
-    fn bpm_from_rhythm(&mut self) {
+    fn _bpm_from_rhythm(&mut self) {
         let mut transientsum = 0;
         for i in 0..self.analysis.rhythm.len() {
             if self.analysis.rhythm[i] != 0. {
@@ -154,6 +146,7 @@ impl SoundFile {
                 toberemoved.push(i);
             }
         }
+        //remove in reverse direction so we don't remove the wrong ones because of right-shift
         for i in toberemoved.iter().rev() {
             bpm_frames.remove(*i);
         }
@@ -206,7 +199,6 @@ impl SoundFile {
                 else {
                     self.power_buf.extend((&self.samples[current_sample.0-AVG_LEN..current_sample.0]).into_iter().map(|x| x.powi(2)));
                 }
-
             }
             self.transient_gap += 1;
             current = iter.next();
@@ -253,7 +245,7 @@ impl Default for Analysis {
 fn main() {
     let mut sound = SoundFile::default();
     // grabbing all files in Songs and adding their paths to a vector
-    let path = Path::new(r".\Songs");
+    let path = Path::new(r"./Songs"); //FIXME: this \ should be / on linux >:(
     let mut entries : Vec<std::path::PathBuf> = vec![];
     println!("which of the songs do you want to play? Write a number");
     for entry in fs::read_dir(path).expect("Unable to list") {
@@ -271,8 +263,6 @@ fn main() {
     println!("playing song: {:?}", entries[n]);
     // println!("{}", entries[1]);
     sound.load_sound(
-        // r"C:\Users\rasmu\Documents\RustProjects\Projekt4\Tempo\Songs\Daft Punk - Da Funk.wav".to_string(),
-        // r"C:\Users\rasmu\Documents\RustProjects\Projekt4\Tempo\Songs\busybeat100.wav".to_string(),
         entries[n].clone()
     );
     if sound.search_for_file() != true {
