@@ -36,17 +36,17 @@ fn main() {
         println!("{}: {}", i, entry.display());
     }
     //choose a sound:
-    // let mut n = String::new();
-    // std::io::stdin()
-    //     .read_line(&mut n)
-    //     .expect("failed to read input.");
-    // let n: usize = n.trim().parse().expect("invalid input");
-    let n = 5;
+    let mut n = String::new();
+    std::io::stdin()
+        .read_line(&mut n)
+        .expect("failed to read input.");
+    let n: usize = n.trim().parse().expect("invalid input");
+    // let n = 4;
     println!("playing song: {:?}", entries[n]);
     sound.load_sound(
         entries[n].clone()
     );
-    if sound.search_for_file() == true {
+    if sound.search_for_file() != true {
         sound.detect_transients_by_rms();
         sound.bpm_in_frames();
         sound.generate_analysis_file();

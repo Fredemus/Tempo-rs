@@ -118,8 +118,10 @@ impl SoundFile {
         //     // average transients per second * 60 gives us our bpm
         //     bpm_frames.push(1. / (len as f32 / self.fs as f32) * 60.);
         // }
+        // i * 2, since every second entry determines space between transients
         for i in 1..self.analysis.rhythm.len() / 2 {
-            bpm_frames.push(1. / (self.analysis.rhythm[i*2] as f32 / self.fs as f32) * 60.);
+            bpm_frames.push(self.fs as f32 / self.analysis.rhythm[i*2] as f32 * 60.);
+            println!("bpm 1 is: {}", bpm_frames[bpm_frames.len() - 1]);
         }
         // filtering out frames with a bpm over 300 FIXME: Maybe filter out too low bpms too?
         // for (i, element) in bpm_frames.iter().enumerate() {
@@ -158,8 +160,8 @@ impl SoundFile {
             // && self.transient_gap > AVG_LEN
             {
                 // pushing in the amplitude of the transient and how many samples passed since last transient
-                self.analysis.rhythm.push(((current_sample.1.abs() - short_rms)  * i32::MAX as f32) as i32);
                 self.analysis.rhythm.push(self.transient_gap as i32);
+                self.analysis.rhythm.push(((current_sample.1.abs() - short_rms)  * i32::MAX as f32) as i32);
                 self.transient_no += 1;
                 self.transient_gap = SKIP_AMT;
                 // fast forwarding through the samples, since the next n samples won't have any transients anyway
