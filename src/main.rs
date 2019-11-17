@@ -3,6 +3,10 @@
     Move to samples to next transient and transient level for creation of analysis files
     https://stackoverflow.com/questions/30838358/what-is-the-correct-way-to-write-vecu16-content-to-a-file
 
+    No reason for transient level to be i32. Consider splitting into u8 and u32, even if it makes reading more complicated
+    u32 might make more sense than i32 too.
+
+
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
     Idea for a pattern: If there's no transients for a while, slowly sweep up when short-time RMS increases
@@ -32,20 +36,22 @@ fn main() {
         println!("{}: {}", i, entry.display());
     }
     //choose a sound:
-    let mut n = String::new();
-    std::io::stdin()
-        .read_line(&mut n)
-        .expect("failed to read input.");
-    let n: usize = n.trim().parse().expect("invalid input");
+    // let mut n = String::new();
+    // std::io::stdin()
+    //     .read_line(&mut n)
+    //     .expect("failed to read input.");
+    // let n: usize = n.trim().parse().expect("invalid input");
+    let n = 5;
     println!("playing song: {:?}", entries[n]);
-    // println!("{}", entries[1]);
     sound.load_sound(
         entries[n].clone()
     );
-    if sound.search_for_file() != true {
-        sound.detect_transients();
+    if sound.search_for_file() == true {
+        sound.detect_transients_by_rms();
         sound.bpm_in_frames();
         sound.generate_analysis_file();
+        println!("BPM is {}", sound.analysis.get_tempo());
+        println!("{:?}",sound.analysis.rhythm);
     } else {
         println!("Analysis file already exists boy");
         sound.read_analysis_file();

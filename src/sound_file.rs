@@ -7,8 +7,9 @@ use std::fs::OpenOptions;
 // use std::io::{Write, BufWriter, BufReader};
 use std::io::prelude::*;
 use std::io::Cursor;
+use std::i32;
 static AVG_LEN: usize = 768;
-static SKIP_AMT: usize = 4096; //SKIP_AMT should never be less than AVG_LEN
+static SKIP_AMT: usize = 4096; // SKIP_AMT should never be less than AVG_LEN
 static SENSITIVITY: f32 = 0.7; // lower is more sensitive
 pub struct SoundFile {
     /// Sound samples
@@ -43,12 +44,12 @@ impl SoundFile {
             .expect("Filen kunne ikke åbnes");
         // file should be filled with the attributes in the AnalysisFile created
         // writing the vector into the analysis file with endianness specified. Should be safe?
-        let slice_f32: &[f32] = &*self.analysis.rhythm;
+        let slice_i32: &[i32] = &*self.analysis.rhythm;
         //writing in bpm
         let _ = file.write_f32::<LittleEndian>(self.analysis.tempo).expect("Der kunne ikke skrives til filen");
         // writing in the vector
-        for &n in slice_f32 {
-            let _ = file.write_f32::<LittleEndian>(n).expect("Der kunne ikke skrives til filen");
+        for &n in slice_i32 {
+            let _ = file.write_i32::<LittleEndian>(n).expect("Der kunne ikke skrives til filen");
         }
     }
     pub fn read_analysis_file(&mut self) {
@@ -60,28 +61,33 @@ impl SoundFile {
             // reading the raw bytes from file to a vector: (since Byteorder crate requires it)
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer).expect("couldn't read file");
+            let num_u8 = buffer.len();
             //reading the raw bytes into rhythm
             let mut reader = Cursor::new(buffer);
             self.analysis.rhythm.clear();
-            for _i in 0..self.samples.len() {
-                self.analysis.rhythm.push(reader.read_f32::<LittleEndian>().unwrap())
+            // reading in tempo as a f32
+            self.analysis.tempo = reader.read_f32::<LittleEndian>().unwrap();
+            // reading in analysis as i32
+            // FIXME: This might go out of scope since buffer is over u8
+            for _i in 0..(num_u8 - 4) / 4 {
+                self.analysis.rhythm.push(reader.read_i32::<LittleEndian>().unwrap())
             }
-            self.analysis.tempo = self.analysis.rhythm.remove(0);
+            // self.analysis.tempo = self.analysis.rhythm.remove(0);
     }
 
     fn _bpm_from_rhythm(&mut self) {
         let mut transientsum = 0;
-        for i in 0..self.analysis.rhythm.len() {
-            if self.analysis.rhythm[i] != 0. {
-                transientsum += 1;
-            }
-        }
+        // for i in 0..self.analysis.rhythm.len() {
+        //     if self.analysis.rhythm[i] != 0. {
+        //         transientsum += 1;
+        //     }
+        // }
+        transientsum = self.analysis.rhythm.len() / 2;
         println!("transientsum is {}!", transientsum);
         println!(
             "number of minutes is {}!",
             (self.analysis.rhythm.len() as f32 / self.fs as f32 / 60.)
         );
-
         // average transients per second * 60 gives us our bpm
         self.analysis.tempo =
             transientsum as f32 / (self.analysis.rhythm.len() as f32 / self.fs as f32 / 60.);
@@ -100,17 +106,20 @@ impl SoundFile {
         let mut bpm_frames: Vec<f32> = vec![];
         let mut it = 0;
         // j is frames. how to find number of? just loop until it's through the vector? When to increase the number of
-        for _i in 0..self.transient_no {
-            let mut len = 0;
-            // loops until the next transient
-            while it < self.samples.len() && self.analysis.rhythm[it] < 0.1 {
-                it += 1;
-                len += 1;
-            }
-            it += 1;
-            len += 1;
-            // average transients per second * 60 gives us our bpm
-            bpm_frames.push(1. / (len as f32 / self.fs as f32) * 60.);
+        // for _i in 0..self.transient_no {
+        //     let mut len = 0;
+        //     // loops until the next transient
+        //     while it < self.samples.len() && self.analysis.rhythm[it] < 0.1 {
+        //         it += 1;
+        //         len += 1;
+        //     }
+        //     it += 1;
+        //     len += 1;
+        //     // average transients per second * 60 gives us our bpm
+        //     bpm_frames.push(1. / (len as f32 / self.fs as f32) * 60.);
+        // }
+        for i in 1..self.analysis.rhythm.len() / 2 {
+            bpm_frames.push(1. / (self.analysis.rhythm[i*2] as f32 / self.fs as f32) * 60.);
         }
         // filtering out frames with a bpm over 300 FIXME: Maybe filter out too low bpms too?
         // for (i, element) in bpm_frames.iter().enumerate() {
@@ -131,9 +140,10 @@ impl SoundFile {
         self.analysis.tempo = bpm_frames[(bpm_frames.len() / 2)];
         println!("BPM is {}", self.analysis.tempo);
     }
-    pub fn detect_transients(&mut self) {
-        self.analysis.rhythm = vec![0.; self.samples.len()];
+    pub fn detect_transients_by_rms(&mut self) {
+        self.analysis.rhythm.clear();
         let mut short_rms: f32;
+        self.transient_gap = 0;
         self.transient_no = 0;
         let mut iter = self.samples.iter().enumerate();
         let mut current: Option<(usize, &f32)> = iter.next();
@@ -147,9 +157,11 @@ impl SoundFile {
             if current_sample.1.abs() - short_rms > SENSITIVITY
             // && self.transient_gap > AVG_LEN
             {
-                self.analysis.rhythm[current_sample.0] = current_sample.1.abs() - short_rms;
+                // pushing in the amplitude of the transient and how many samples passed since last transient
+                self.analysis.rhythm.push(((current_sample.1.abs() - short_rms)  * i32::MAX as f32) as i32);
+                self.analysis.rhythm.push(self.transient_gap as i32);
                 self.transient_no += 1;
-                self.transient_gap = 0;
+                self.transient_gap = SKIP_AMT;
                 // fast forwarding through the samples, since the next n samples won't have any transients anyway
                 current = iter.nth(SKIP_AMT);
                 if current == None {
@@ -168,6 +180,7 @@ impl SoundFile {
                         self.power_buf.push_back(self.samples[j].powi(2));
                         self.power_buf.pop_front();
                     }
+
                 }
                 // is this even faster? is there any reason to have an if-else in the loop?
                 else {
@@ -203,7 +216,7 @@ pub struct Analysis {
     /// tempo in beats per minute
     tempo: f32,
     /// Contains every time a transient is detected. Same time format as the SoundFile
-    rhythm: Vec<f32>,
+    pub rhythm: Vec<i32>,
 }
 impl Analysis {
     pub fn get_tempo(&self) -> f32 {
@@ -214,7 +227,7 @@ impl Default for Analysis {
     fn default() -> Analysis {
         Analysis {
             tempo: 0.,
-            rhythm: vec![0.],
+            rhythm: vec![0],
         }
     }
 }
