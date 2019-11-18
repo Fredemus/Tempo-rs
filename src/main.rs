@@ -1,7 +1,6 @@
 /*
     TODO:
-    Move to samples to next transient and transient level for creation of analysis files
-    https://stackoverflow.com/questions/30838358/what-is-the-correct-way-to-write-vecu16-content-to-a-file
+    Next step is playing sound realtime on laptop, while printing transients
 
     No reason for transient level to be i32. Consider splitting into u8 and u32, even if it makes reading more complicated
     u32 might make more sense than i32 too.
@@ -16,11 +15,12 @@
 /// This project is meant for opening a wave file and calculating its tempo. Meant as a prototype
 // hound is a wav file reading library
 extern crate hound;
-
+// extern crate rppal; <- rppal only works on linux
+// use rppal::uart::{Parity, Uart};
 use std::fs;
 use std::path::Path;
-// note: static variables are thread-local
-// global variables for tweaking how the detection works
+
+mod dmx;
 mod sound_file;
 
 fn main() {
@@ -36,24 +36,45 @@ fn main() {
         println!("{}: {}", i, entry.display());
     }
     //choose a sound:
-    let mut n = String::new();
-    std::io::stdin()
-        .read_line(&mut n)
-        .expect("failed to read input.");
-    let n: usize = n.trim().parse().expect("invalid input");
-    // let n = 4;
-    println!("playing song: {:?}", entries[n]);
+    // let mut n = String::new();
+    // std::io::stdin()
+    //     .read_line(&mut n)
+    //     .expect("failed to read input.");
+    // let n: usize = n.trim().parse().expect("invalid input");
+    let n = 5;
     sound.load_sound(entries[n].clone());
     if sound.search_for_file() != true {
         sound.detect_transients_by_rms();
-        sound.bpm_in_frames();
+        sound._bpm_by_guess();
         sound.generate_analysis_file();
         println!("BPM is {}", sound.analysis.get_tempo());
-        println!("{:?}", sound.analysis.rhythm);
+    // println!("{:?}", sound.analysis.rhythm);
     } else {
         println!("Analysis file already exists boy");
         sound.read_analysis_file();
+        sound._bpm_by_guess();
         println!("BPM is {}", sound.analysis.get_tempo());
-        println!("{:?}", sound.analysis.rhythm);
+        // println!("{:?}", sound.analysis.rhythm);
     }
+    println!("playing song: {:?}", entries[n]);
+    let mut transient_iter = 0;
+    let mut curr_trans = 0;
+    for x in sound.samples.iter() {
+        // Send out sample
+        // println!("playing sample: {}", x); //FIXME: Replace with what we actually send out sound with
+        transient_iter += 1;
+        if curr_trans * 2 + 1 < sound.analysis.rhythm.len() {
+            // Bounds checking. can this be avoided?
+            if transient_iter >= sound.analysis.rhythm[curr_trans * 2] as usize {
+                // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
+                print!(
+                    "now there's a transient with volume {} ",
+                    sound.analysis.rhythm[curr_trans * 2 + 1] as f32 / std::i32::MAX as f32
+                ); // FIXME: Replace with what we actually send out sound with
+                transient_iter = 0;
+                curr_trans += 1;
+            }
+        }
+    }
+    println!("song finished");
 }

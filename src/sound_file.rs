@@ -8,12 +8,14 @@ use std::fs::OpenOptions;
 use std::i32;
 use std::io::prelude::*;
 use std::io::Cursor;
+// note: static variables are thread-local
+// global variables for tweaking how the detection works
 static AVG_LEN: usize = 768;
 static SKIP_AMT: usize = 4096; // SKIP_AMT should never be less than AVG_LEN
 static SENSITIVITY: f32 = 0.7; // lower is more sensitive
 pub struct SoundFile {
     /// Sound samples
-    samples: Vec<f32>,
+    pub samples: Vec<f32>,
     //the name of the file that was read into SoundFile
     file_name: std::path::PathBuf,
     fs: usize,
@@ -189,6 +191,73 @@ impl SoundFile {
             current = iter.next();
         }
         println!("Sum is {}", self.transient_no);
+    }
+    pub fn _bpm_by_guess(&mut self) {
+        // creating a vec with only the distances to make our lives easier
+        let dists: Vec<isize> = self
+            .analysis
+            .rhythm
+            .iter()
+            .step_by(2)
+            .map(|x| *x as isize)
+            .collect();
+        println!("dists: {:?}", dists);
+        // discard everything up to first trans
+        // check how distances added together (absolute time placement) fits with expected from tempo
+        for bpm in 50..100 {
+            let quarter: isize = self.fs as isize / bpm as isize * 60;
+            let mut fails = 0;
+            let mut passed = false;
+            //FIXME: More triplets?
+            let valid_times: Vec<isize> = vec![
+                quarter / 3,
+                quarter / 2,
+                quarter / 3 * 2,
+                quarter,
+                quarter * 2,
+                quarter * 4,
+            ];
+            // If a specified number of fails happen, the bpm should be discarded
+            while fails < 10 && passed != true {
+                // Check if the distance between each and from the start matches some combination of valid times
+                for i in 1..dists.len() {
+                    let mut summed_len = 0;
+                    // FIXME: Instead of contains we need something which accepts more fuzzy values
+                    let short_time_diffs: Vec<isize> =
+                        valid_times.clone().iter().map(|x| (x - dists[i])).collect();
+                    // This for loop is an entire test and should increment fails by one if it doesn't pass
+                    for &x in short_time_diffs.iter() {
+                        if x < 50 { //if one of the valid times are less than 50 samples wrong
+                             // test passed. How to return that?
+                        }
+                    }
+                    // if !valid_times.contains(&dists[i]) {
+                    // }
+                    for _j in i..dists.len() {
+                        summed_len += dists[i];
+                        // For the summed we just check how it fits the quarter note grid. Lots of consistent passes a long way out should mean a correct tempo.
+                        let num_of_quarters = summed_len / valid_times[0];
+                        let quartergridfit = summed_len - (num_of_quarters + 1) * valid_times[0]; //
+                                                                                                  //
+
+                        let diffs: Vec<isize> =
+                            valid_times.clone().iter().map(|x| x - summed_len).collect();
+                        for x in diffs.iter() {
+                            if *x < 50 { //if one of the valid times are less than 50 samples wrong
+                                 // test passed. How to return that?
+                            }
+                        }
+                    }
+                    // How do you check at lengths
+                }
+            }
+        }
+        // let mut lenforten = 0;
+        // for i in 1..11 {
+        //     lenforten += self.analysis.rhythm[i * 2];
+        // }
+        // // try a bunch of different things and see how they align further and further out. discard if deviancy too high
+        // self.analysis.tempo = self.fs as f32 / lenforten as f32 * 60. * 10.;
     }
 }
 impl Default for SoundFile {
