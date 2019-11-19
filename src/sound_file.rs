@@ -9,7 +9,8 @@ use std::i32;
 use std::io::prelude::*;
 use std::io::Cursor;
 
-use std::sync::Arc;
+
+
 
 // note: static variables are thread-local
 // global variables for tweaking how the detection works
@@ -35,6 +36,9 @@ impl SoundFile {
         let mut reader = hound::WavReader::open(&self.file_name).unwrap();
         self.samples = reader.samples().collect::<Result<Vec<_>, _>>().unwrap();
         self.file_name.set_extension("txt");
+    }
+    pub fn set_file_name(&mut self, path: std::path::PathBuf) {
+        self.file_name = path;
     }
     // checks if an analysis file exists for the loaded wav file
     pub fn search_for_file(&self) -> bool {
@@ -112,7 +116,7 @@ impl SoundFile {
         }
     }
 
-    pub fn bpm_in_frames(&mut self) {
+    pub fn _bpm_in_frames(&mut self) {
         let mut bpm_frames: Vec<f32> = vec![];
         // i * 2, since every second entry determines space between transients
         for i in 1..self.analysis.rhythm.len() / 2 {
@@ -233,6 +237,9 @@ impl SoundFile {
                         if x < 50 { //if one of the valid times are less than 50 samples wrong
                              // test passed. How to return that?
                         }
+                        else {
+                            fails += 1;
+                        }
                     }
                     // if !valid_times.contains(&dists[i]) {
                     // }
@@ -241,8 +248,7 @@ impl SoundFile {
                         summed_len += dists[i];
                         // For the summed we just check how it fits the quarter note grid. Lots of consistent passes a long way out should mean a correct tempo.
                         let num_of_quarters = summed_len / valid_times[0];
-                        let quartergridfit = summed_len - (num_of_quarters + 1) * valid_times[0]; //
-                                                                                                  //
+                        // let quartergridfit = summed_len - (num_of_quarters + 1) * valid_times[0];
 
                         let diffs: Vec<isize> =
                             valid_times.clone().iter().map(|x| x - summed_len).collect();
