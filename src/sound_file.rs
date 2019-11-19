@@ -8,6 +8,9 @@ use std::fs::OpenOptions;
 use std::i32;
 use std::io::prelude::*;
 use std::io::Cursor;
+
+use std::sync::Arc;
+
 // note: static variables are thread-local
 // global variables for tweaking how the detection works
 static AVG_LEN: usize = 768;
@@ -201,7 +204,7 @@ impl SoundFile {
             .step_by(2)
             .map(|x| *x as isize)
             .collect();
-        println!("dists: {:?}", dists);
+        // println!("dists: {:?}", dists);
         // discard everything up to first trans
         // check how distances added together (absolute time placement) fits with expected from tempo
         for bpm in 50..100 {
@@ -233,6 +236,7 @@ impl SoundFile {
                     }
                     // if !valid_times.contains(&dists[i]) {
                     // }
+                    //FIXME: Move from one summed_len at at a time to a vec of absolute distances
                     for _j in i..dists.len() {
                         summed_len += dists[i];
                         // For the summed we just check how it fits the quarter note grid. Lots of consistent passes a long way out should mean a correct tempo.
@@ -282,7 +286,7 @@ impl Default for SoundFile {
 pub struct Analysis {
     /// tempo in beats per minute
     tempo: f32,
-    /// Contains every time a transient is detected. Same time format as the SoundFile
+    /// Array with first the distance to next transient, then the transient's intensity, repeated for all transients
     pub rhythm: Vec<i32>,
 }
 impl Analysis {
