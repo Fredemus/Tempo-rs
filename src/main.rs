@@ -5,6 +5,9 @@
     No reason for transient level to be i32. Consider splitting into u8 and u32, even if it makes reading more complicated
     u32 might make more sense than i32 too.
 
+    FIXME: Skift til active-low
+
+
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
     Idea for a pattern: If there's no transients for a while, slowly sweep up when short-time RMS increases
@@ -23,21 +26,12 @@ extern crate hound;
 // use rppal::uart::{Parity, Uart};
 use std::fs;
 use std::path::Path;
-<<<<<<< HEAD
 use std::{thread, time};
 mod dmx;
 mod sound_file;
-
+mod util;
 // extern crate rppal;
 // use rppal::gpio::Gpio;
-=======
-use std::thread;
-mod dmx;
-mod sound_file;
-
-extern crate rppal;
-use rppal::gpio::Gpio;
->>>>>>> 837a399... fully functional triggering on transients. ready for message sending
 
 fn main() -> Result<(), anyhow::Error> {
     // cpal setup
@@ -62,24 +56,6 @@ fn main() -> Result<(), anyhow::Error> {
     // grabbing all files in Songs and adding their paths to a vector
     let path = Path::new(r"./Songs"); //FIXME: this \ should be / on linux >:(
     let mut entries: Vec<std::path::PathBuf> = vec![];
-<<<<<<< HEAD
-=======
-    
-    for (i, entry) in entries.iter().enumerate() {
-        sound.set_file_name(entries[i].clone());
-        if !sound.search_for_file() {
-            println!("please wait. analysing {}", entry.display());
-            sound.load_sound(entries[i].clone());
-            sound.detect_transients_by_rms();
-            sound._bpm_by_guess();
-            sound.generate_analysis_file();
-            println!("BPM is {}", sound.analysis.get_tempo());
-        }
-        
-    }
-
-    println!("which of the songs do you want to play? Write a number.");
->>>>>>> 837a399... fully functional triggering on transients. ready for message sending
     for entry in fs::read_dir(path).expect("Unable to list") {
         entries.push(entry.expect("unable to get entry").path());
     }
@@ -94,185 +70,118 @@ fn main() -> Result<(), anyhow::Error> {
             sound.generate_analysis_file();
             println!("BPM is {}", sound.analysis.get_tempo());
         }
-        
     }
     println!("which of the songs do you want to play? Write a number.");
     for (i, entry) in entries.iter().enumerate() {
         println!("{}: {}", i, entry.display());
     }
-    //choose a sound:
-    let mut n = String::new();
-    std::io::stdin()
-        .read_line(&mut n)
-        .expect("failed to read input.");
-    let mut n: usize = n.trim().parse().expect("invalid input");
+    //choose a sound: below is for choosing with command line
+    // let mut n = String::new();
+    // std::io::stdin()
+    //     .read_line(&mut n)
+    //     .expect("failed to read input.");
+    // let n: usize = n.trim().parse().expect("invalid input");
+    // let mut n : usize = 0;
+    let mut n = util::AtomicUsize::new(0);
+    let mut go_ahead = util::AtomicI8::new(0);
     // Spawning button threads:
     let _plus_button_thread = thread::spawn(move || {
-<<<<<<< HEAD
-        // let gpio = Gpio::new().unwrap();
-        // let pin = gpio.get(23).unwrap().into_input(); // FIXME: Is this the right pin number?
-        // loop {
-        //     if pin.read() == rppal::gpio::Level::Low { // assuming active low
-        //         n += 1;
-        //     }
-        // }
+        let gpio = Gpio::new().unwrap();
+        let pin = gpio.get(16).unwrap().into_input(); // FIXME: Is this the right pin number?
+        loop {
+            if pin.read() == rppal::gpio::Level::Low { // assuming active low
+                n.set(n.get() + 1);
+            }
+        }
         loop {
             thread::sleep(time::Duration::from_millis(500));
             println!("hello from thread plus_button");
         }
     });
     let _minus_button_thread = thread::spawn(move || {
-        // let gpio = Gpio::new().unwrap();
-        // let pin = gpio.get(24).unwrap().into_input(); // FIXME: Is this the right pin number?
-        // loop {
-        //     if pin.read() == rppal::gpio::Level::Low { // assuming active low
-        //         n -= 1;
-        //     }
-        // }
-    });
-    let _play_button_thread = thread::spawn(move || {
-        // let gpio = Gpio::new().unwrap();
-        // let pin = gpio.get(25).unwrap().into_input(); // FIXME: Is this the right pin number?
-        // loop {
-        //     if pin.read() == rppal::gpio::Level::Low { // assuming active low
-        //         //FIXME: How do we communicate that loading and analysis can go ahead
-        //     }
-        // }
-    });
-    let _stop_button_thread = thread::spawn(move || {
-        // let gpio = Gpio::new().unwrap();
-        // let pin = gpio.get(25).unwrap().into_input(); // FIXME: Is this the right pin number?
-        // loop {
-        //     if pin.read() == rppal::gpio::Level::Low { // assuming active low
-        //         //FIXME: How do we use this to end the playback thread?
-        //     }
-        // }
-    });
-    let _pause_button_thread = thread::spawn(move || {
-        // let gpio = Gpio::new().unwrap();
-        // let pin = gpio.get(26).unwrap().into_input(); // FIXME: Is this the right pin number?
-        // loop {
-        //     if pin.read() == rppal::gpio::Level::Low { // assuming active low
-        //         //FIXME: How do we use this to end the playback thread?
-        //     }
-        // }
-=======
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(23).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let pin = gpio.get(12).unwrap().into_input(); // FIXME: Is this the right pin number?
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                n += 1;
-            }
-        }
-    });
-    let _minus_button_thread = thread::spawn(move || {
-        let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(24).unwrap().into_input(); // FIXME: Is this the right pin number?
-        loop {
-            if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                n -= 1;
+                n.set(n.get() - 1);
             }
         }
     });
     let _play_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(25).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let pin = gpio.get(8).unwrap().into_input(); // FIXME: Is this the right pin number?
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                //FIXME: How do we communicate that loading and analysis can go ahead
+                go_ahead.set(1);
+                // FIXME: How do we communicate that loading and analysis can go ahead
             }
         }
     });
     let _stop_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(25).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let pin = gpio.get(10).unwrap().into_input(); // FIXME: Is this the right pin number?
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
+                go_ahead.set(0);
                 //FIXME: How do we use this to end the playback thread?
             }
         }
     });
-    let _pause_button_thread = thread::spawn(move || {
-        let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(26).unwrap().into_input(); // FIXME: Is this the right pin number?
-        loop {
-            if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                //FIXME: How do we use this to end the playback thread?
-            }
-        }
->>>>>>> 837a399... fully functional triggering on transients. ready for message sending
-    });
+
     // let n = 5;
     // FIXME: This should only run when pressing the "play" button
-    sound.load_sound(entries[n].clone());
-<<<<<<< HEAD
-    sound.read_analysis_file();
-=======
-    if !sound.search_for_file() {
-        sound.detect_transients_by_rms();
-        sound._bpm_by_guess();
-        sound.generate_analysis_file();
-        println!("BPM is {}", sound.analysis.get_tempo());
-    // println!("{:?}", sound.analysis.rhythm);
-    } else {
-        println!("Analysis file already exists boy");
+    if go_ahead.get() == 1 {
+        sound.load_sound(entries[n].clone());
         sound.read_analysis_file();
-        // sound._bpm_by_guess();
-        println!("BPM is {}", sound.analysis.get_tempo());
-        // println!("{:?}", sound.analysis.rhythm);
-    }
+        println!("playing song: {:?}", entries[n]);
+        let playback = sound.samples.clone();
+        let mut sample_iter = playback.iter();
+        let mut transient_iter = 0;
+        let mut curr_trans = 0;
+        // event_loop.run takes control of the playback thread and handles it
+        event_loop.run(move |id, result| {
+            let data = match result {
+                Ok(data) => data,
+                Err(err) => {
+                    eprintln!("an error occurred on stream {:?}: {}", id, err);
+                    return;
+                }
+            };
+            // This match could be used to support outher bit rates
+            match data {
+                cpal::StreamData::Output {
+                    buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
+                } => {
+                    for sample in buffer.chunks_mut(format.channels as usize) {
+                        let value = sample_iter.next();
+                        if value == None {
+                            println!("song over");
+                            break; // FIXME: How do we get from here to "choose new song"?
+                        } else {
+                            transient_iter += 1;
+                            // Below doesn't work because it make event_loop take ownership of sound
+                            if transient_iter >= sound.analysis.rhythm[curr_trans * 2] as usize && curr_trans * 2 + 1 < sound.analysis.rhythm.len() {
+                                // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
+                                println!(
+                                    "now there's a transient with volume {} ",
+                                    sound.analysis.rhythm[curr_trans * 2 + 1] as f32 / std::i32::MAX as f32
+                                ); // FIXME: Replace with what we actually send out sound with
+                                transient_iter = 0;
+                                curr_trans += 1;
 
-
-
-
->>>>>>> 837a399... fully functional triggering on transients. ready for message sending
-    println!("playing song: {:?}", entries[n]);
-    let playback = sound.samples.clone();
-    let mut sample_iter = playback.iter();
-    let mut transient_iter = 0;
-    let mut curr_trans = 0;
-    // event_loop.run takes control of the playback thread and handles it
-    event_loop.run(move |id, result| {
-        let data = match result {
-            Ok(data) => data,
-            Err(err) => {
-                eprintln!("an error occurred on stream {:?}: {}", id, err);
-                return;
-            }
-        };
-        // This match could be used to support outher bit rates
-        match data {
-            cpal::StreamData::Output {
-                buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
-            } => {
-                for sample in buffer.chunks_mut(format.channels as usize) {
-                    let value = sample_iter.next();
-                    if value == None {
-                        println!("song over");
-                        break; // FIXME: How do we get from here to "choose new song"?
-                    } else {
-                        transient_iter += 1;
-                        // Below doesn't work because it make event_loop take ownership of sound
-                        if transient_iter >= sound.analysis.rhythm[curr_trans * 2] as usize && curr_trans * 2 + 1 < sound.analysis.rhythm.len() {
-                            // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
-                            println!(
-                                "now there's a transient with volume {} ",
-                                sound.analysis.rhythm[curr_trans * 2 + 1] as f32 / std::i32::MAX as f32
-                            ); // FIXME: Replace with what we actually send out sound with
-                            transient_iter = 0;
-                            curr_trans += 1;
-                        }
-                        for out in sample.iter_mut() {
-                            // println!("playing sample");
-                            *out = *value.unwrap();
+                            }
+                            for out in sample.iter_mut() {
+                                // println!("playing sample");
+                                *out = *value.unwrap();
+                            }
                         }
                     }
                 }
+                _ => {
+                    println!("can't play back. sample type not supported");
+                    ()
+                }
             }
-            _ => {
-                println!("can't play back. sample type not supported");
-                ()
-            }
-        }
-    });
+        });
+    }
 }
