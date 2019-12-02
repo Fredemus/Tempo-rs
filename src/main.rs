@@ -91,40 +91,42 @@ fn main() -> Result<(), anyhow::Error> {
     let play_arc = Arc::clone(&go_ahead);
     let stop_arc = Arc::clone(&go_ahead);
     // Spawning button threads:
+
     let _plus_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(16).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let mut pin = gpio.get(25).unwrap().into_input_pullup(); // FIXME: Is this the right pin number?
+        pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
                 plus_arc.set(plus_arc.get() + 1);
-                println!("plus button pressed");
             }
         }
     });
     let _minus_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(12).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let mut pin = gpio.get(24).unwrap().into_input_pullup(); // FIXME: Is this the right pin number?
+        pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
                 minus_arc.set(minus_arc.get() - 1);
-                println!("minus button pressed");
             }
         }
     });
     let _play_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(18).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let mut pin = gpio.get(18).unwrap().into_input_pullup(); // FIXME: Is this the right pin number?
+        pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
                 play_arc.store(true,Ordering::Relaxed);
-                println!("play button pressed");
                 // FIXME: How do we communicate that loading and analysis can go ahead
             }
         }
     });
     let _stop_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(10).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let mut pin = gpio.get(23).unwrap().into_input_pullup(); // FIXME: Is this the right pin number?
+        pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
                 stop_arc.store(false,Ordering::Relaxed);
@@ -136,6 +138,9 @@ fn main() -> Result<(), anyhow::Error> {
 
     // let n = 5;
     // FIXME: This should only run when pressing the "play" button
+    while !go_ahead.load(Ordering::Relaxed){
+        thread::sleep(time::Duration::from_millis(250));
+    }
     if go_ahead.load(Ordering::Relaxed) == true {
         sound.load_sound(entries[n.get()].clone());
         sound.read_analysis_file();
