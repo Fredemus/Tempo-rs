@@ -24,14 +24,16 @@ use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
 extern crate hound;
 // extern crate rppal; <- rppal only works on linux
 // use rppal::uart::{Parity, Uart};
+use std::sync::Arc;
 use std::fs;
 use std::path::Path;
 use std::{thread, time};
 mod dmx;
 mod sound_file;
 mod util;
-// extern crate rppal;
-// use rppal::gpio::Gpio;
+extern crate rppal;
+use std::sync::atomic::{AtomicBool, Ordering};
+use rppal::gpio::Gpio;
 
 fn main() -> Result<(), anyhow::Error> {
     // cpal setup
@@ -82,20 +84,21 @@ fn main() -> Result<(), anyhow::Error> {
     //     .expect("failed to read input.");
     // let n: usize = n.trim().parse().expect("invalid input");
     // let mut n : usize = 0;
-    let mut n = util::AtomicUsize::new(0);
-    let mut go_ahead = util::AtomicI8::new(0);
+    let mut n = Arc::new(util::AtomicUsize::new(0));
+    let plus_arc = Arc::clone(&n);
+    let minus_arc = Arc::clone(&n);
+    let mut go_ahead = Arc::new(AtomicBool::new(false));
+    let play_arc = Arc::clone(&go_ahead);
+    let stop_arc = Arc::clone(&go_ahead);
     // Spawning button threads:
     let _plus_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
         let pin = gpio.get(16).unwrap().into_input(); // FIXME: Is this the right pin number?
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                n.set(n.get() + 1);
+                plus_arc.set(plus_arc.get() + 1);
+                println!("plus button pressed");
             }
-        }
-        loop {
-            thread::sleep(time::Duration::from_millis(500));
-            println!("hello from thread plus_button");
         }
     });
     let _minus_button_thread = thread::spawn(move || {
@@ -103,16 +106,18 @@ fn main() -> Result<(), anyhow::Error> {
         let pin = gpio.get(12).unwrap().into_input(); // FIXME: Is this the right pin number?
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                n.set(n.get() - 1);
+                minus_arc.set(minus_arc.get() - 1);
+                println!("minus button pressed");
             }
         }
     });
     let _play_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(8).unwrap().into_input(); // FIXME: Is this the right pin number?
+        let pin = gpio.get(18).unwrap().into_input(); // FIXME: Is this the right pin number?
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                go_ahead.set(1);
+                play_arc.store(true,Ordering::Relaxed);
+                println!("play button pressed");
                 // FIXME: How do we communicate that loading and analysis can go ahead
             }
         }
@@ -122,7 +127,8 @@ fn main() -> Result<(), anyhow::Error> {
         let pin = gpio.get(10).unwrap().into_input(); // FIXME: Is this the right pin number?
         loop {
             if pin.read() == rppal::gpio::Level::Low { // assuming active low
-                go_ahead.set(0);
+                stop_arc.store(false,Ordering::Relaxed);
+                println!("stop button pressed");
                 //FIXME: How do we use this to end the playback thread?
             }
         }
@@ -130,10 +136,10 @@ fn main() -> Result<(), anyhow::Error> {
 
     // let n = 5;
     // FIXME: This should only run when pressing the "play" button
-    if go_ahead.get() == 1 {
-        sound.load_sound(entries[n].clone());
+    if go_ahead.load(Ordering::Relaxed) == true {
+        sound.load_sound(entries[n.get()].clone());
         sound.read_analysis_file();
-        println!("playing song: {:?}", entries[n]);
+        println!("playing song: {:?}", entries[n.get()]);
         let playback = sound.samples.clone();
         let mut sample_iter = playback.iter();
         let mut transient_iter = 0;
@@ -184,4 +190,5 @@ fn main() -> Result<(), anyhow::Error> {
             }
         });
     }
+    Ok(())
 }

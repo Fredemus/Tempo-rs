@@ -5,7 +5,7 @@ use std::sync::atomic::{self, Ordering};
 
 /// Simple wrapper over `AtomicI8` with relaxed ordering.
 pub struct AtomicI8(atomic::AtomicI8);
-
+#[allow(dead_code)]
 impl AtomicI8 {
     /// Create a new atomic 8-bit integer with initial value `v`.
     pub fn new(v: i8) -> AtomicI8 {
@@ -45,7 +45,7 @@ impl AtomicUsize {
 
 /// Simple 32-bit floating point wrapper over `AtomicU32` with relaxed ordering.
 pub struct AtomicF32(atomic::AtomicU32);
-
+#[allow(dead_code)]
 impl AtomicF32 {
     /// Create a new atomic 32-bit float with initial value `v`.
     pub fn new(v: f32) -> AtomicF32 {
