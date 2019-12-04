@@ -1,6 +1,5 @@
-
-//Utilities for threadsafe atomic variables. Mostly wrappers to make the primitive types easier to use
-
+// Utilities for threadsafe atomic variables. Mostly wrappers to make the primitive types easier to use
+// FIXME: Would be nice to have a wrapper over AtomicBool
 use std::sync::atomic::{self, Ordering};
 
 /// Simple wrapper over `AtomicI8` with relaxed ordering.
@@ -25,7 +24,7 @@ impl AtomicI8 {
 
 /// Simple wrapper over `AtomicUsize` with relaxed ordering.
 pub struct AtomicUsize(atomic::AtomicUsize);
-
+#[allow(dead_code)]
 impl AtomicUsize {
     /// Create a new atomic integer with initial value `v`.
     pub fn new(v: usize) -> AtomicUsize {

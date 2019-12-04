@@ -210,7 +210,7 @@ impl SoundFile {
         for bpm in 50..100 {
             let quarter: isize = self.fs as isize / bpm as isize * 60;
             let mut fails = 0;
-            let mut passed = false;
+            let passed = false;
             //FIXME: More triplets?
             let valid_times: Vec<isize> = vec![
                 quarter / 3,
@@ -232,8 +232,7 @@ impl SoundFile {
                     for &x in short_time_diffs.iter() {
                         if x < 50 { //if one of the valid times are less than 50 samples wrong
                              // test passed. How to return that?
-                        }
-                        else {
+                        } else {
                             fails += 1;
                         }
                     }
@@ -243,7 +242,7 @@ impl SoundFile {
                     for _j in i..dists.len() {
                         summed_len += dists[i];
                         // For the summed we just check how it fits the quarter note grid. Lots of consistent passes a long way out should mean a correct tempo.
-                        let num_of_quarters = summed_len / valid_times[0];
+                        let _num_of_quarters = summed_len / valid_times[0];
                         // let quartergridfit = summed_len - (num_of_quarters + 1) * valid_times[0];
 
                         let diffs: Vec<isize> =
