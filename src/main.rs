@@ -111,7 +111,6 @@ fn main() -> Result<(), anyhow::Error> {
     // drop(sound_guard);
     // let mut sample_iter = samples_from_arc.iter();
     let dummy_vec = vec![0.,0.,0.,0.];
-    let mut sample_iter_arc = Mutex::new(dummy_vec.iter());
     
     // Spawning button threads: FIXME: plus and minus button should only trigger on rising edge
     // let _plus_button_thread = thread::spawn(move || {
@@ -200,8 +199,8 @@ fn main() -> Result<(), anyhow::Error> {
     let mut transient_iter = 0;
     // let mut curr_trans = 0;
     // event_loop.run takes control of the main thread and turns it into a playback thread
+    let mut sample_iter = dummy_vec.into_iter();
     event_loop.run(move |id, result| {
-        // should only happen exactly when playback happens
         if play_flag_arc2.load(Ordering::Relaxed) {
             println!("updating iter");
             // for cloning samples vector and creating an iterator over it
@@ -209,14 +208,11 @@ fn main() -> Result<(), anyhow::Error> {
             let to_be_played = sound_guard.samples.clone();
             // dropping the guard to unlock mutex:
             drop(sound_guard);
-            let iter_guard = sample_iter_arc.get_mut().unwrap();
-            *iter_guard = to_be_played.iter();                        
-            // = samples_from_arc.iter();
+            sample_iter = to_be_played.into_iter();
             play_flag_arc2.store(false, Ordering::Relaxed);
         } 
-        // we need to do a refresh of the iterator if playback is going to start again.
-        // maybe some flag?
         else {
+            sample_iter.next();
             let data = match result {
                 Ok(data) => data,
                 Err(err) => {
@@ -238,8 +234,8 @@ fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                         else {
-                            // let value = sample_iter.next();
-                            let value = Some(&0.);
+                            let value = sample_iter.next();
+                            // let value = Some(&0.);
                             if value == None {
                                 // print!("song over");
                                 break; // FIXME: How do we get from here to "choose new song"?
@@ -261,7 +257,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 // transient_iter += 1;
                                 for out in sample.iter_mut() {
                                     // println!("playing sample");
-                                    *out = *value.unwrap();
+                                    *out = value.unwrap();
                                 }
                             }
                         }
