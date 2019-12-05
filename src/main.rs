@@ -29,8 +29,8 @@ use std::{fs, thread, time};
 mod dmx;
 mod sound_file;
 mod util;
-extern crate rppal; // <- rppal only works on linux
-use rppal::gpio::Gpio;
+// extern crate rppal; // <- rppal only works on linux
+// use rppal::gpio::Gpio;
 // use rppal::uart::{Parity, Uart};
 use std::sync::atomic::{AtomicBool, Ordering};
 #[allow(dead_code)]
@@ -88,7 +88,7 @@ fn main() -> Result<(), anyhow::Error> {
     // let mut n : usize = 0;
     // creating atomic reference counting pointers for sharing data between threads
     // these 3 are for choosing sound. plus_arc and minus_arc lets plus and minus buttons change n
-    let n = Arc::new(util::AtomicUsize::new(0));
+    let n = Arc::new(util::AtomicUsize::new(4));
     let plus_arc = Arc::clone(&n);
     let minus_arc = Arc::clone(&n);
     // these 3 are to see if playback can start/continue
@@ -101,56 +101,90 @@ fn main() -> Result<(), anyhow::Error> {
     let sound_arc_playback = Arc::clone(&sound_arc);
 
     // for refreshing the iterater when starting a new song
-    let play_flag1 = Arc::new(AtomicBool::new(false));
-    let play_flag2 = Arc::new(AtomicBool::new(false));
+    let play_flag_arc1 = Arc::new(AtomicBool::new(false));
+    let play_flag_arc2 = Arc::clone(&play_flag_arc1);
 
-    // this one is used to give playback thread acces to play samples
-    // and play_button_thread acces to change them by changing song 
-    // Spawning button threads:
-    let _plus_button_thread = thread::spawn(move || {
-        let gpio = Gpio::new().unwrap();
-        let mut pin = gpio.get(25).unwrap().into_input_pullup(); // FIXME: Is this the right pin number?
-        pin.set_reset_on_drop(false);
-        loop {
-            if pin.read() == rppal::gpio::Level::Low {
-                plus_arc.set(plus_arc.get() + 1);
-            }
-        }
-    });
-    let _minus_button_thread = thread::spawn(move || {
-        let gpio = Gpio::new().unwrap();
-        let mut pin = gpio.get(24).unwrap().into_input_pullup(); // FIXME: Is this the right pin number?
-        pin.set_reset_on_drop(false);
-        loop {
-            if pin.read() == rppal::gpio::Level::Low {
-                minus_arc.set(minus_arc.get() - 1);
-            }
-        }
-    });
+    // for cloning samples vector and creating an iterator over it
+    // let sound_guard =  &sound_arc_playback.lock().unwrap();
+    // let samples_from_arc = sound_guard.samples.clone();
+    // // dropping the guard to unlock mutex:
+    // drop(sound_guard);
+    // let mut sample_iter = samples_from_arc.iter();
+    let dummy_vec = vec![0.,0.,0.,0.];
+    
+    // Spawning button threads: FIXME: plus and minus button should only trigger on rising edge
+    // let _plus_button_thread = thread::spawn(move || {
+    //     let gpio = Gpio::new().unwrap();
+    //     let mut pin = gpio.get(25).unwrap().into_input_pullup();
+    //     pin.set_reset_on_drop(false);
+    //     loop {
+    //         if pin.read() == rppal::gpio::Level::Low {
+    //             plus_arc.set(plus_arc.get() + 1);
+    //         }
+    //     }
+    // });
+    // let _minus_button_thread = thread::spawn(move || {
+    //     let gpio = Gpio::new().unwrap();
+    //     let mut pin = gpio.get(24).unwrap().into_input_pullup(); 
+    //     pin.set_reset_on_drop(false);
+    //     loop {
+    //         if pin.read() == rppal::gpio::Level::Low {
+    //             minus_arc.set(minus_arc.get() - 1);
+    //         }
+    //     }
+    // });
     let _play_button_thread = thread::spawn(move || {
-        let gpio = Gpio::new().unwrap();
-        let mut pin = gpio.get(18).unwrap().into_input_pullup(); 
-        pin.set_reset_on_drop(false);
+        // let gpio = Gpio::new().unwrap();
+        // let mut pin = gpio.get().unwrap().into_input_pullup();
+        // pin.set_reset_on_drop(false);
         loop {
-            if pin.read() == rppal::gpio::Level::Low {
-                play_arc.store(true, Ordering::Relaxed);
-                sound_arc.lock().unwrap().load_sound(entries[n.get()].clone());
-                sound_arc.lock().unwrap().read_analysis_file();
+            // if pin.read() == rppal::gpio::Level::Low {
+                println!("true stored in play arc");
+                // sound_arc.lock().unwrap().load_sound(entries[n.get()].clone());
+                // println!("sound loaded with sound_arc");
+                if plus_arc.get() == 0 {
+                    plus_arc.set(2);
+                }
+                else if plus_arc.get() == 2 {
+                    plus_arc.set(4);
+                }
+                else {
+                    plus_arc.set(0);
+                }
+                
+                let mut lock = sound_arc.try_lock();
+                if let Ok(ref mut mutex) = lock {
+                    mutex.load_sound(entries[n.get()].clone());
+                    println!("sound loaded with sound_arc");
+                    mutex.read_analysis_file();
+                    println!("analysis file read");
+                } else {
+                    println!("try_lock for loading sound failed");
+                }
+                drop(lock);
+                // sound_arc.lock().unwrap().read_analysis_file();
+                // println!("analysis file read");
                 //raise flag to update the iterator
-                play_flag1.store(true, Ordering::Relaxed);
+                play_arc.store(true, Ordering::Relaxed);
+                play_flag_arc1.store(true, Ordering::Relaxed);
                 println!("playing song: {:?}", entries[n.get()]);
-            }
+                thread::sleep(time::Duration::from_millis(10000));
+            // }
         }
     });
     let _stop_button_thread = thread::spawn(move || {
-        let gpio = Gpio::new().unwrap();
-        let mut pin = gpio.get(23).unwrap().into_input_pullup(); // FIXME: Is this the right pin number?
-        pin.set_reset_on_drop(false);
+        // let gpio = Gpio::new().unwrap();
+        // let mut pin = gpio.get(23).unwrap().into_input_pullup(); 
+        // pin.set_reset_on_drop(false);
+        thread::sleep(time::Duration::from_millis(5000));
         loop {
-            if pin.read() == rppal::gpio::Level::Low {
+            // if pin.read() == rppal::gpio::Level::Low {
+                println!("playback stopped");
                 stop_arc.store(false, Ordering::Relaxed);
                 //FIXME: How do we use this to end the playback thread?
-            }
+            // }
+            thread::sleep(time::Duration::from_millis(10000));
+
         }
     });
     while !go_ahead.load(Ordering::Relaxed) {
@@ -160,24 +194,25 @@ fn main() -> Result<(), anyhow::Error> {
     // sound.read_analysis_file();
     // let playback = Arc::clone(&sound.samples);
     // let samples_arc = Arc::new(&sound.samples);
-    // since samples_from_arc is a reference to 
-    let samples_from_arc = &sound_arc_playback.lock().unwrap().samples;
-    let mut sample_iter = samples_from_arc.iter();
+    // since samples_from_arc is a reference to
+    
     let mut transient_iter = 0;
     // let mut curr_trans = 0;
     // event_loop.run takes control of the main thread and turns it into a playback thread
+    let mut sample_iter = dummy_vec.into_iter();
     event_loop.run(move |id, result| {
-        if !go_ahead.load(Ordering::Relaxed)  { 
-            // this should stop it from playing after pressing stop.
-            // but how do we make play load a sound, then?
-        }
-        // we need to do a refresh of the iterator if playback is going to start again.
-        // maybe some flag?
-        if play_flag2.load(Ordering::Relaxed) /*what here?? */ {
-            sample_iter = samples_from_arc.iter();
-            play_flag2.store(false, Ordering::Relaxed);
-        }
+        if play_flag_arc2.load(Ordering::Relaxed) {
+            println!("updating iter");
+            // for cloning samples vector and creating an iterator over it
+            let sound_guard =  sound_arc_playback.lock().unwrap();
+            let to_be_played = sound_guard.samples.clone();
+            // dropping the guard to unlock mutex:
+            drop(sound_guard);
+            sample_iter = to_be_played.into_iter();
+            play_flag_arc2.store(false, Ordering::Relaxed);
+        } 
         else {
+            sample_iter.next();
             let data = match result {
                 Ok(data) => data,
                 Err(err) => {
@@ -191,28 +226,39 @@ fn main() -> Result<(), anyhow::Error> {
                     buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
                 } => {
                     for sample in buffer.chunks_mut(format.channels as usize) {
-                        let value = sample_iter.next();
-                        if value == None {
-                            println!("song over");
-                            break; // FIXME: How do we get from here to "choose new song"?
-                        } else {
-                            transient_iter += 1;
-                            // Below doesn't work because it make event_loop take ownership of sound
-                            // if transient_iter >= sound.analysis.rhythm[curr_trans * 2] as usize
-                            //     && curr_trans * 2 + 1 < sound.analysis.rhythm.len()
-                            // {
-                            //     // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
-                            //     println!(
-                            //         "now there's a transient with volume {} ",
-                            //         sound.analysis.rhythm[curr_trans * 2 + 1] as f32
-                            //             / std::i32::MAX as f32
-                            //     ); // FIXME: Replace with what we actually send out sound with
-                            //     transient_iter = 0;
-                            //     curr_trans += 1;
-                            // }
+                        if !go_ahead.load(Ordering::Relaxed) {
+                            // this should stop it from playing after pressing stop.
+                            // but how do we make play load a sound, then?
                             for out in sample.iter_mut() {
-                                // println!("playing sample");
-                                *out = *value.unwrap();
+                                *out = 0.;
+                            }
+                        }
+                        else {
+                            let value = sample_iter.next();
+                            // let value = Some(&0.);
+                            if value == None {
+                                // print!("song over");
+                                break; // FIXME: How do we get from here to "choose new song"?
+                            } else {
+                                
+                                // Below doesn't work because it make event_loop take ownership of sound
+                                // if transient_iter >= sound.analysis.rhythm[curr_trans * 2] as usize
+                                //     && curr_trans * 2 + 1 < sound.analysis.rhythm.len()
+                                // {
+                                //     // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
+                                //     println!(
+                                //         "now there's a transient with volume {} ",
+                                //         sound.analysis.rhythm[curr_trans * 2 + 1] as f32
+                                //             / std::i32::MAX as f32
+                                //     ); // FIXME: Replace with what we actually send out sound with
+                                //     transient_iter = 0;
+                                //     curr_trans += 1;
+                                // }
+                                // transient_iter += 1;
+                                for out in sample.iter_mut() {
+                                    // println!("playing sample");
+                                    *out = value.unwrap();
+                                }
                             }
                         }
                     }
