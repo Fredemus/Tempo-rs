@@ -1,11 +1,9 @@
 /*
     TODO: top is most important
-    fix printing transients
     Make buttons trigger only on rising edge
     get ready for martin and nicholas
     improved transient formula
     Best guess bpm algo
-    FIXME:
 
 
     IDEAS:
@@ -86,9 +84,10 @@ fn main() -> Result<(), anyhow::Error> {
     //     .expect("failed to read input.");
     // let n: usize = n.trim().parse().expect("invalid input");
     // let mut n : usize = 0;
-    // creating atomic reference counting pointers for sharing data between threads
+   
+    // creating atomic reference counting pointers for safely sharing data between threads
     // these 3 are for choosing sound. plus_arc and minus_arc lets plus and minus buttons change n
-    let n = Arc::new(util::AtomicUsize::new(4));
+    let n = Arc::new(util::AtomicUsize::new(0));
     let plus_arc = Arc::clone(&n);
     let minus_arc = Arc::clone(&n);
     // these 3 are to see if playback can start/continue
@@ -103,14 +102,6 @@ fn main() -> Result<(), anyhow::Error> {
     // for refreshing the iterater when starting a new song
     let play_flag_arc1 = Arc::new(AtomicBool::new(false));
     let play_flag_arc2 = Arc::clone(&play_flag_arc1);
-
-    // for cloning samples vector and creating an iterator over it
-    // let sound_guard =  &sound_arc_playback.lock().unwrap();
-    // let samples_from_arc = sound_guard.samples.clone();
-    // // dropping the guard to unlock mutex:
-    // drop(sound_guard);
-    // let mut sample_iter = samples_from_arc.iter();
-    let dummy_vec = vec![0.,0.,0.,0.];
     
     // Spawning button threads: FIXME: plus and minus button should only trigger on rising edge
     // let _plus_button_thread = thread::spawn(move || {
@@ -162,8 +153,6 @@ fn main() -> Result<(), anyhow::Error> {
                     println!("try_lock for loading sound failed");
                 }
                 drop(lock);
-                // sound_arc.lock().unwrap().read_analysis_file();
-                // println!("analysis file read");
                 //raise flag to update the iterator
                 play_arc.store(true, Ordering::Relaxed);
                 play_flag_arc1.store(true, Ordering::Relaxed);
@@ -181,7 +170,6 @@ fn main() -> Result<(), anyhow::Error> {
             // if pin.read() == rppal::gpio::Level::Low {
                 println!("playback stopped");
                 stop_arc.store(false, Ordering::Relaxed);
-                //FIXME: How do we use this to end the playback thread?
             // }
             thread::sleep(time::Duration::from_millis(10000));
 
@@ -190,17 +178,11 @@ fn main() -> Result<(), anyhow::Error> {
     while !go_ahead.load(Ordering::Relaxed) {
         thread::sleep(time::Duration::from_millis(250));
     }
-    // sound.load_sound(entries[n.get()].clone());
-    // sound.read_analysis_file();
-    // let playback = Arc::clone(&sound.samples);
-    // let samples_arc = Arc::new(&sound.samples);
-    // since samples_from_arc is a reference to
-    
     let mut transient_iter = 0;
     let mut curr_trans = 0;
     // rhythm and sample_iter is to bring sound's samples and transient information properly into the scope of event_loop 
-    // 
-    let mut rhythm : Vec<i32> = vec![0,0,0,0];
+    let mut rhythm : Vec<i32> = vec![0];
+    let dummy_vec = vec![0.];
     let mut sample_iter = dummy_vec.into_iter();
     // event_loop.run takes control of the main thread and turns it into a playback thread
     event_loop.run(move |id, result| {
@@ -228,31 +210,27 @@ fn main() -> Result<(), anyhow::Error> {
                     return;
                 }
             };
-            // This match could be used to support outher bit rates
+            // This match could be used to support other bit rates
             match data {
                 cpal::StreamData::Output {
                     buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
                 } => {
                     for sample in buffer.chunks_mut(format.channels as usize) {
                         if !go_ahead.load(Ordering::Relaxed) {
-                            // this should stop it from playing after pressing stop.
-                            // but how do we make play load a sound, then?
                             for out in sample.iter_mut() {
                                 *out = 0.;
                             }
                         }
                         else {
                             let value = sample_iter.next();
-                            // let value = Some(&0.);
                             if value == None {
                                 // print!("song over");
-                                break; // FIXME: How do we get from here to "choose new song"?
+                                break; 
                             } else {
                                 
-                                // Below doesn't work because it make event_loop take ownership of sound
                                 if transient_iter >= rhythm[curr_trans * 2] as usize
                                     && curr_trans * 2 + 1 < rhythm.len()
-                                {
+                                {   
                                     // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
                                     println!(
                                         "now there's a transient with volume {} ",
