@@ -1,11 +1,11 @@
 /*
-    TODO:
-    Next step is playing sound realtime on laptop, while printing transients
-
-    No reason for transient level to be i32. Consider splitting into u8 and u32, even if it makes reading more complicated
-    u32 might make more sense than i32 too.
-
-    FIXME: Skift til active-low
+    TODO: top is most important
+    fix printing transients
+    Make buttons trigger only on rising edge
+    get ready for martin and nicholas
+    improved transient formula
+    Best guess bpm algo
+    FIXME:
 
 
     IDEAS:
@@ -197,18 +197,26 @@ fn main() -> Result<(), anyhow::Error> {
     // since samples_from_arc is a reference to
     
     let mut transient_iter = 0;
-    // let mut curr_trans = 0;
-    // event_loop.run takes control of the main thread and turns it into a playback thread
+    let mut curr_trans = 0;
+    // rhythm and sample_iter is to bring sound's samples and transient information properly into the scope of event_loop 
+    // 
+    let mut rhythm : Vec<i32> = vec![0,0,0,0];
     let mut sample_iter = dummy_vec.into_iter();
+    // event_loop.run takes control of the main thread and turns it into a playback thread
     event_loop.run(move |id, result| {
+        // this if statement evaluates to true when a new song is being played
+        // lets us update sample_iter and and rhythm safely
         if play_flag_arc2.load(Ordering::Relaxed) {
             println!("updating iter");
             // for cloning samples vector and creating an iterator over it
             let sound_guard =  sound_arc_playback.lock().unwrap();
-            let to_be_played = sound_guard.samples.clone();
+            let samples = sound_guard.samples.clone();
+            rhythm = sound_guard.analysis.rhythm.clone();
             // dropping the guard to unlock mutex:
             drop(sound_guard);
-            sample_iter = to_be_played.into_iter();
+            sample_iter = samples.into_iter();
+            transient_iter = 0;
+            curr_trans = 0;
             play_flag_arc2.store(false, Ordering::Relaxed);
         } 
         else {
@@ -242,19 +250,19 @@ fn main() -> Result<(), anyhow::Error> {
                             } else {
                                 
                                 // Below doesn't work because it make event_loop take ownership of sound
-                                // if transient_iter >= sound.analysis.rhythm[curr_trans * 2] as usize
-                                //     && curr_trans * 2 + 1 < sound.analysis.rhythm.len()
-                                // {
-                                //     // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
-                                //     println!(
-                                //         "now there's a transient with volume {} ",
-                                //         sound.analysis.rhythm[curr_trans * 2 + 1] as f32
-                                //             / std::i32::MAX as f32
-                                //     ); // FIXME: Replace with what we actually send out sound with
-                                //     transient_iter = 0;
-                                //     curr_trans += 1;
-                                // }
-                                // transient_iter += 1;
+                                if transient_iter >= rhythm[curr_trans * 2] as usize
+                                    && curr_trans * 2 + 1 < rhythm.len()
+                                {
+                                    // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
+                                    println!(
+                                        "now there's a transient with volume {} ",
+                                        rhythm[curr_trans * 2 + 1] as f32
+                                            / std::i32::MAX as f32
+                                    ); // FIXME: Replace with what we actually send out sound with
+                                    transient_iter = 0;
+                                    curr_trans += 1;
+                                }
+                                transient_iter += 1;
                                 for out in sample.iter_mut() {
                                     // println!("playing sample");
                                     *out = value.unwrap();
