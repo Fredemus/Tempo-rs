@@ -111,6 +111,7 @@ fn main() -> Result<(), anyhow::Error> {
     //     loop {
     //         if pin.read() == rppal::gpio::Level::Low {
     //             plus_arc.set(plus_arc.get() + 1);
+    //             thread::sleep(time::Duration::from_millis(250)); //FIXME: Not needed if we get trigger on edge working
     //         }
     //     }
     // });
@@ -121,6 +122,8 @@ fn main() -> Result<(), anyhow::Error> {
     //     loop {
     //         if pin.read() == rppal::gpio::Level::Low {
     //             minus_arc.set(minus_arc.get() - 1);
+    //             thread::sleep(time::Duration::from_millis(250)); //FIXME: Not needed if we get trigger on edge working
+
     //         }
     //     }
     // });
