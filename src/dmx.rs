@@ -27,14 +27,64 @@ impl DMX {
         self.msg[7] = 0b00000001;
         //FIXME: Color choice should probably be handled here by nicho but not sure
     }
-    fn change_color(&mut self, r: u8, g: u8, b: u8) {
+    pub fn change_color(&mut self, bass: f32, mid: f32, high: f32) {
+       
+        bass.min(0.);
+        mid.min(0.);
+        high.min(0.);
+        
+        //convert bass to u8
+        let bass_converted = ((255.+bass).floor()) as u8;
+        let mid_converted = ((255.+mid).floor()) as u8;
+        let high_converted = ((255.+high).floor()) as u8;
+
+        let mut rgb_vec = vec![(bass_converted,0), (mid_converted,1), (high_converted,2)];
+        rgb_vec.sort(); // Sorting largest values to the end of vector
+        println!("{:?}",rgb_vec);
+
+        // Floor is rounding downwards so we dont loose data when converting to u8
+        // The damp_effect is implemented to make the lighting more colorful, by increasing the margin between the highest RGB value and the two lower values
+        // rgb_vec[rgb_vec.len()-1].0 is  the index of the last value of sorted vector, thus providing the highest RBG value. We multiply by 0.5 to get 50% of this value
+        // The for loop runs to the end of the rgb_vec by using '0..rgb_vec.len() - 1' we subract 1 because the 'len()' function returns 3
+
+        let damp_effect = (rgb_vec[rgb_vec.len() - 1].0 as f32 * 0.5).floor() as u8;
+        for i in 0..rgb_vec.len() - 1{
+            rgb_vec[i].0 -= damp_effect;
+        }
+
+        let mut r = 0;
+        let mut g = 0;
+        let mut b = 0;
+        // using the index to match the values back to where they belong
+        for i in 0..rgb_vec.len() {
+            match rgb_vec[i].1 {
+                0 => r = rgb_vec[i].0,
+                1 => g = rgb_vec[i].0,
+                2 => b = rgb_vec[i].0,
+                _ => (),
+            }
+        }
+
+        
+        // Unit 1
+
         self.msg[3] = r;
         self.msg[4] = g;
         self.msg[5] = b;
 
+        // Unit 2
+
         self.msg[8] = r;
         self.msg[9] = g;
         self.msg[10] = b;
+
+        println!("Red is {}", r);
+        println!("Green is {}", g);
+        println!("Blue is {}", b);
+        
+
+        println!("_______________________________________________________")
+        
     }
     fn change_dir(&mut self) {
         self.msg[2] = self.msg[2] ^ 0b00000001;
