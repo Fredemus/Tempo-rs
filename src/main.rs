@@ -27,6 +27,17 @@ use std::{fs, thread, time};
 mod dmx;
 mod sound_file;
 mod util;
+
+// Nicho's crates:
+use std::collections::VecDeque;
+extern crate rustfft;
+extern crate basic_dsp_vector;
+extern crate num_complex;
+extern crate num_traits;
+use rustfft::FFTplanner;
+use rustfft::num_complex::Complex;
+use rustfft::num_traits::Zero;
+
 // extern crate rppal; // <- rppal only works on linux
 // use rppal::gpio::Gpio;
 // use rppal::uart::{Parity, Uart};
@@ -127,6 +138,14 @@ fn main() -> Result<(), anyhow::Error> {
     //         }
     //     }
     // });
+
+    // Nicho's fft_queue:
+    let mut fft_deque : VecDeque<Complex<f32>> =  VecDeque::new();
+    // this for loop defines the length of the deque / fourier transfomr
+    for _i in 0..1536 {
+        fft_deque.push_back(num_complex::Complex::new(0., 0.));
+    }
+
     let _play_button_thread = thread::spawn(move || {
         // let gpio = Gpio::new().unwrap();
         // let mut pin = gpio.get().unwrap().into_input_pullup();
@@ -187,6 +206,10 @@ fn main() -> Result<(), anyhow::Error> {
     let mut rhythm : Vec<i32> = vec![0];
     let dummy_vec = vec![0.];
     let mut sample_iter = dummy_vec.into_iter();
+    // Nicho's RGB variables
+
+    let mut count = 0;
+    let mut uart = Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2);
     // event_loop.run takes control of the main thread and turns it into a playback thread
     event_loop.run(move |id, result| {
         // this if statement evaluates to true when a new song is being played
@@ -230,7 +253,75 @@ fn main() -> Result<(), anyhow::Error> {
                                 // print!("song over");
                                 break; 
                             } else {
+                                fft_deque.pop_front();
+                                fft_deque.push_back(num::Complex::new(*value.unwrap(),0.));
+
+                                count += 1;
+                                if count == 4410{
+                                    
+                                    // Main RGB code
+                                    let mut planner = FFTplanner::new(false);
+                                    let fft = planner.plan_fft(1536);
+                                    let mut _fft_vec:  Vec<Complex<f32>> = Vec::from(fft_deque.clone());
+                                    let mut output: Vec<Complex<f32>> = vec![Complex::zero(); 1536];
+
+                                    fft.process(&mut _fft_vec, &mut output);
+                                    
+                                    let amps = output.iter().map(|x| x.norm_sqr()).collect::<Vec<f32>>();
+                                    let mut amps_iter = amps.iter();
+                                    
+                                    let mut bass_sum = 0.;         
+                                    let mut mid_sum = 0.;
+                                    let mut high_iter = 0.;
+
+                                    
+                                    let bass_bands = 4;
+                                    let mid_bands = 100;
+                                    let high_bands = 664;
+
+                                    for i in 1..bass_bands {
+                                    // Do average of the first 4 values and send it out as HEX
+                                        bass_sum += amps_iter.next().unwrap();
+                                    }
+                                    let bass_max = 10000.; // The denominator is chosen from max observed value of the fft
+                                    let avg_bass = bass_sum / (bass_bands as f32);
+                                    let bass_ref = avg_bass/bass_max;  
+                                    let bass = 20.*bass_ref.log(10.);
+
+
+                                  for i in bass_bands..mid_bands {
+                                        // Do average of the next 100 values and send it out as HEX
+                                        mid_sum += amps_iter.next().unwrap();
+                                    }
+                                    let mid_max = 8000.; // The denominator is chosen from max observed value of the fft
+                                    let avg_mid = mid_sum / (mid_bands as f32);
+                                    let mid_ref = avg_mid / mid_max;
+                                    let mid = 20.*mid_ref.log(10.0);
+
+                                   for i in mid_bands..high_bands {
+                                     // Do average over the last values and send out as HEX
+                                     let x = amps_iter.next();
+                                     if x == None{
+                                        break;
+                                    }
+                                    high_iter += x.unwrap();
+                                    break;
+                                }
+                                let high_max = 0.99; // The denominator is chosen from max observed value of the fft
+                                let avg_high = high_iter / (high_bands as f32);
+                                let high_ref = avg_high / high_max;
+                                let high = 20.*high_ref.log(10.0);
                                 
+                                count = 0;
+
+                                // Write output
+
+                                let mut dmx = dmx::DMX::default();
+                                dmx.change_color(bass, mid, high);
+                                let slice = &dmx.msg[..];
+                                uart.write(slice);
+
+                            }
                                 if transient_iter >= rhythm[curr_trans * 2] as usize
                                     && curr_trans * 2 + 1 < rhythm.len()
                                 {   
