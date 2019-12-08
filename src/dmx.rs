@@ -40,7 +40,6 @@ impl DMX {
 
         let mut rgb_vec = vec![(bass_converted,0), (mid_converted,1), (high_converted,2)];
         rgb_vec.sort(); // Sorting largest values to the end of vector
-        println!("{:?}",rgb_vec);
 
         // Floor is rounding downwards so we dont loose data when converting to u8
         // The damp_effect is implemented to make the lighting more colorful, by increasing the margin between the highest RGB value and the two lower values
@@ -77,13 +76,6 @@ impl DMX {
         self.msg[8] = r;
         self.msg[9] = g;
         self.msg[10] = b;
-
-        println!("Red is {}", r);
-        println!("Green is {}", g);
-        println!("Blue is {}", b);
-        
-
-        println!("_______________________________________________________")
         
     }
     fn change_dir(&mut self) {

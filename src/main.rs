@@ -34,7 +34,6 @@ extern crate rustfft;
 extern crate basic_dsp_vector;
 extern crate num_complex;
 extern crate num_traits;
-extern crate hex;
 use rustfft::FFTplanner;
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
@@ -259,7 +258,6 @@ fn main() -> Result<(), anyhow::Error> {
 
                                 count += 1;
                                 if count == 4410{
-                                    print!("Counter reached {}! Now calculating RGB values...  \n", count);
                                     
                                     // Main RGB code
                                     let mut planner = FFTplanner::new(false);
@@ -271,37 +269,36 @@ fn main() -> Result<(), anyhow::Error> {
                                     
                                     let amps = output.iter().map(|x| x.norm_sqr()).collect::<Vec<f32>>();
                                     let mut amps_iter = amps.iter();
-                                    //print!("Test: {:?}", amps_iter);
                                     
                                     let mut bass_sum = 0.;         
                                     let mut mid_sum = 0.;
                                     let mut high_iter = 0.;
 
-                                    for i in 1..4 {
+                                    
+                                    let bass_bands = 4;
+                                    let mid_bands = 100;
+                                    let high_bands = 664;
+
+                                    for i in 1..bass_bands {
                                     // Do average of the first 4 values and send it out as HEX
                                         bass_sum += amps_iter.next().unwrap();
                                     }
-                                    let bass_bands = 4.;
                                     let bass_max = 10000.; // The denominator is chosen from max observed value of the fft
-                                    //print!("Bass iter is: {}", bass_iter);
-                                    let avg_bass = bass_sum / bass_bands;
+                                    let avg_bass = bass_sum / (bass_bands as f32);
                                     let bass_ref = avg_bass/bass_max;  
                                     let bass = 20.*bass_ref.log(10.);
 
-                                   // print!("Bass is {} dB \n", bass);
 
-                                  for i in 4..105 {
+                                  for i in bass_bands..mid_bands {
                                         // Do average of the next 100 values and send it out as HEX
                                         mid_sum += amps_iter.next().unwrap();
                                     }
-                                    let mid_bands = 100.;
                                     let mid_max = 8000.; // The denominator is chosen from max observed value of the fft
-                                    let avg_mid = mid_sum / mid_bands;
+                                    let avg_mid = mid_sum / (mid_bands as f32);
                                     let mid_ref = avg_mid / mid_max;
                                     let mid = 20.*mid_ref.log(10.0);
-                                    //print!("Mid is {} dB \n", mid);
 
-                                   for i in 105..768 {
+                                   for i in mid_bands..high_bands {
                                      // Do average over the last values and send out as HEX
                                      let x = amps_iter.next();
                                      if x == None{
@@ -310,16 +307,14 @@ fn main() -> Result<(), anyhow::Error> {
                                     high_iter += x.unwrap();
                                     break;
                                 }
-                                let high_bands = 664.;
                                 let high_max = 0.99; // The denominator is chosen from max observed value of the fft
-                                let avg_high = high_iter / high_bands;
+                                let avg_high = high_iter / (high_bands as f32);
                                 let high_ref = avg_high / high_max;
                                 let high = 20.*high_ref.log(10.0);
-                                //print!("High is {} dB \n", high);
                                 
                                 count = 0;
-                                println!("");
-                                // Print output
+
+                                // Write output
 
                                 let mut dmx = dmx::DMX::default();
                                 dmx.change_color(bass, mid, high);
