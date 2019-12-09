@@ -203,6 +203,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut output: Vec<Complex<f32>> = vec![Complex::zero(); 1536];
     let mut count = 0;
     let mut uart = Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2).unwrap();
+    let mut dmx = dmx::DMX::default();
     //uart.set_write_mode(false)?;
     // event_loop.run takes control of the main thread and turns it into a playback thread
     event_loop.run(move |id, result| {
@@ -304,7 +305,7 @@ fn main() -> Result<(), anyhow::Error> {
 
                                     // Write output
 
-                                    let mut dmx = dmx::DMX::default();
+                                    
                                     dmx.change_color(bass, mid, high);
                                     uart.write(&dmx.msg[..]).unwrap();
                                 }
@@ -312,7 +313,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     && curr_trans * 2 + 1 < rhythm.len()
                                 {
                                     // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
-                                    let mut dmx = dmx::DMX::default();
+                                    
                                     dmx.simple_move(sound.analysis.rhythm[curr_trans * 2 + 1]);
                                     uart.write(&dmx.msg[..]).unwrap();
                             
@@ -322,7 +323,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                                 if transient_iter >= rhythm[curr_trans * 2] as usize
                                     && curr_trans * 2 + 1 < rhythm.len(){
-                                    let mut dmx = dmx::DMX::default();
+                                    
                                     dmx.change_dir();
                                     uart.write(&dmx.msg[..]).unwrap();
                                 }
