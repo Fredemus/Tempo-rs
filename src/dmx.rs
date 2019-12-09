@@ -75,8 +75,28 @@ impl DMX {
         self.msg[9] = g;
         self.msg[10] = b;
     }
+
     fn change_dir(&mut self) {
         self.msg[2] = self.msg[2] ^ 0b00000001;
         self.msg[7] = self.msg[7] ^ 0b00000001;
     }
+    
+        pub fn left_right_move(&mut self){
+        //movement
+        self.msg[1] = 90;
+        self.msg[6] = 90;
+        //directions
+        self.msg[2] = 0b00000010;
+        self.msg[7] = 0b00000010;
+    }
+
+    /*pub fn four_move(&mut self, transientlevel: i32)){ //prolly not possible, here should be made in main but its annoying to do???
+        let level_u8: u8 = ((transientlevel as f32 / std::i32::MAX as f32) * 255 as f32) as u8;
+
+        self.msg[1] = level_u8;
+        self.msg[6] = level_u8;
+
+        self.msg[2] = 0b00000010;
+        self.msg[7] = 0b00000010;
+    }*/
 }

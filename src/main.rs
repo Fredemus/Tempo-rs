@@ -311,12 +311,19 @@ fn main() -> Result<(), anyhow::Error> {
                                     && curr_trans * 2 + 1 < rhythm.len()
                                 {
                                     // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
-                                    println!(
-                                        "now there's a transient with volume {} ",
-                                        rhythm[curr_trans * 2 + 1] as f32 / std::i32::MAX as f32
+                                    dmx_msg.simple_move(sound.analysis.rhythm[curr_trans * 2 + 1]);
+                                    uart.write(&dmx_msg.msg[..]).unwrap();
+                            
+                                    transient_iter = 0;
+                                    curr_trans += 1;
                                     ); // FIXME: Replace with what we actually send out sound with
                                     transient_iter = 0;
                                     curr_trans += 1;
+                                }
+                                if transient_iter >= rhythm[curr_trans * 2]/2 as usize
+                                    && curr_trans * 2 + 1 < rhythm.len(){
+                                    dmx_msg.change_dir();
+                                    uart.write(&dmx_msg.msg[..]).unwrap();
                                 }
                                 transient_iter += 1;
                                 for out in sample.iter_mut() {
