@@ -2,7 +2,7 @@
 // use rppal::uart::{Parity, Uart};
 #[allow(dead_code)]
 pub struct DMX {
-    msg: Vec<u8>,
+    pub msg: Vec<u8>,
 }
 
 impl Default for DMX {
@@ -28,17 +28,16 @@ impl DMX {
         //FIXME: Color choice should probably be handled here by nicho but not sure
     }
     pub fn change_color(&mut self, bass: f32, mid: f32, high: f32) {
-       
         bass.min(0.);
         mid.min(0.);
         high.min(0.);
-        
-        //convert bass to u8
-        let bass_converted = ((255.+bass).floor()) as u8;
-        let mid_converted = ((255.+mid).floor()) as u8;
-        let high_converted = ((255.+high).floor()) as u8;
 
-        let mut rgb_vec = vec![(bass_converted,0), (mid_converted,1), (high_converted,2)];
+        //convert bass to u8
+        let bass_converted = ((255. + bass).floor()) as u8;
+        let mid_converted = ((255. + mid).floor()) as u8;
+        let high_converted = ((255. + high).floor()) as u8;
+
+        let mut rgb_vec = vec![(bass_converted, 0), (mid_converted, 1), (high_converted, 2)];
         rgb_vec.sort(); // Sorting largest values to the end of vector
 
         // Floor is rounding downwards so we dont loose data when converting to u8
@@ -47,7 +46,7 @@ impl DMX {
         // The for loop runs to the end of the rgb_vec by using '0..rgb_vec.len() - 1' we subract 1 because the 'len()' function returns 3
 
         let damp_effect = (rgb_vec[rgb_vec.len() - 1].0 as f32 * 0.5).floor() as u8;
-        for i in 0..rgb_vec.len() - 1{
+        for i in 0..rgb_vec.len() - 1 {
             rgb_vec[i].0 -= damp_effect;
         }
 
@@ -64,7 +63,6 @@ impl DMX {
             }
         }
 
-        
         // Unit 1
 
         self.msg[3] = r;
@@ -76,7 +74,6 @@ impl DMX {
         self.msg[8] = r;
         self.msg[9] = g;
         self.msg[10] = b;
-        
     }
     fn change_dir(&mut self) {
         self.msg[2] = self.msg[2] ^ 0b00000001;
