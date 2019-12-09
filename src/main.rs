@@ -1,16 +1,13 @@
 /*
     TODO: top is most important
     Make buttons trigger only on rising edge
-    get ready for martin and nicholas
     improved transient formula
     Best guess bpm algo
-
 
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
     Idea for a pattern: If there's no transients for a while, slowly sweep up when short-time RMS increases
     parallelize by not loading the entire wav at once and just use the samples iterator?
-
 
 */
 /// This project is meant for opening a wave file and calculating its tempo. Meant as a prototype
@@ -151,9 +148,6 @@ fn main() -> Result<(), anyhow::Error> {
         // pin.set_reset_on_drop(false);
         loop {
             // if pin.read() == rppal::gpio::Level::Low {
-            println!("true stored in play arc");
-            // sound_arc.lock().unwrap().load_sound(entries[n.get()].clone());
-            // println!("sound loaded with sound_arc");
             if plus_arc.get() == 0 {
                 plus_arc.set(2);
             } else if plus_arc.get() == 2 {
@@ -203,7 +197,10 @@ fn main() -> Result<(), anyhow::Error> {
     let dummy_vec = vec![0.];
     let mut sample_iter = dummy_vec.into_iter();
     // Nicho's RGB variables
-
+    // Main RGB code
+    let mut planner = FFTplanner::new(false);
+    let fft = planner.plan_fft(1536);
+    let mut output: Vec<Complex<f32>> = vec![Complex::zero(); 1536];
     let mut count = 0;
     // let mut uart = Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2);
     // event_loop.run takes control of the main thread and turns it into a playback thread
@@ -253,14 +250,11 @@ fn main() -> Result<(), anyhow::Error> {
                                 count += 1;
                                 if count == 4410 {
                                     // Main RGB code
-                                    let mut planner = FFTplanner::new(false);
-                                    let fft = planner.plan_fft(1536);
+                                    // let mut planner = FFTplanner::new(false);
+                                    // let fft = planner.plan_fft(1536);
                                     let mut _fft_vec: Vec<Complex<f32>> =
                                         Vec::from(fft_deque.clone());
-                                    let mut output: Vec<Complex<f32>> = vec![Complex::zero(); 1536];
-
                                     fft.process(&mut _fft_vec, &mut output);
-
                                     let amps =
                                         output.iter().map(|x| x.norm_sqr()).collect::<Vec<f32>>();
                                     let mut amps_iter = amps.iter();
