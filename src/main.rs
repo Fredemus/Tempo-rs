@@ -3,6 +3,8 @@
     Make buttons trigger only on rising edge
     improved transient formula
     Best guess bpm algo
+    Program crashes in bpm_by_frames if the file doesn't have any transients
+    RGB shit should really be in a struct in its own file
 
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
@@ -84,7 +86,7 @@ fn main() -> Result<(), anyhow::Error> {
     for (i, entry) in entries.iter().enumerate() {
         println!("{}: {}", i, entry.display());
     }
-    //choose a sound: below is for choosing with command line
+    // choose a sound: below is for choosing with command line
     // let mut n = String::new();
     // std::io::stdin()
     //     .read_line(&mut n)
@@ -110,44 +112,44 @@ fn main() -> Result<(), anyhow::Error> {
     let play_flag_arc1 = Arc::new(AtomicBool::new(false));
     let play_flag_arc2 = Arc::clone(&play_flag_arc1);
 
-    // Spawning button threads: FIXME: plus and minus button should only trigger on rising edge
-    // let _plus_button_thread = thread::spawn(move || {
-    //     let gpio = Gpio::new().unwrap();
-    //     let mut pin = gpio.get(25).unwrap().into_input_pullup();
-    //     pin.set_reset_on_drop(false);
-    //     loop {
-    //         if pin.read() == rppal::gpio::Level::Low {
-    //             plus_arc.set(plus_arc.get() + 1);
-    //             thread::sleep(time::Duration::from_millis(250)); //FIXME: Not needed if we get trigger on edge working
-    //         }
-    //     }
-    // });
-    // let _minus_button_thread = thread::spawn(move || {
-    //     let gpio = Gpio::new().unwrap();
-    //     let mut pin = gpio.get(24).unwrap().into_input_pullup();
-    //     pin.set_reset_on_drop(false);
-    //     loop {
-    //         if pin.read() == rppal::gpio::Level::Low {
-    //             minus_arc.set(minus_arc.get() - 1);
-    //             thread::sleep(time::Duration::from_millis(250)); //FIXME: Not needed if we get trigger on edge working
+    
+    let _plus_button_thread = thread::spawn(move || {
+        let gpio = Gpio::new().unwrap();
+        let mut pin = gpio.get(25).unwrap().into_input_pullup();
+        pin.set_reset_on_drop(false);
+        loop {
+            if pin.read() == rppal::gpio::Level::Low {
+                plus_arc.set(plus_arc.get() + 1);
+                thread::sleep(time::Duration::from_millis(250));
+            }
+        }
+    });
+    let _minus_button_thread = thread::spawn(move || {
+        let gpio = Gpio::new().unwrap();
+        let mut pin = gpio.get(24).unwrap().into_input_pullup();
+        pin.set_reset_on_drop(false);
+        loop {
+            if pin.read() == rppal::gpio::Level::Low {
+                minus_arc.set(minus_arc.get() - 1);
+                thread::sleep(time::Duration::from_millis(250));
 
-    //         }
-    //     }
-    // });
+            }
+        }
+    });
 
     // Nicho's fft_queue:
     let mut fft_deque: VecDeque<Complex<f32>> = VecDeque::new();
-    // this for loop defines the length of the deque / fourier transfomr
+    // this for loop defines the length of the deque / fourier transform
     for _i in 0..1536 {
         fft_deque.push_back(num_complex::Complex::new(0., 0.));
     }
 
     let _play_button_thread = thread::spawn(move || {
-        // let gpio = Gpio::new().unwrap();
-        // let mut pin = gpio.get().unwrap().into_input_pullup();
-        // pin.set_reset_on_drop(false);
+        let gpio = Gpio::new().unwrap();
+        let mut pin = gpio.get().unwrap().into_input_pullup();
+        pin.set_reset_on_drop(false);
         loop {
-            // if pin.read() == rppal::gpio::Level::Low {
+            if pin.read() == rppal::gpio::Level::Low {
             if plus_arc.get() == 0 {
                 plus_arc.set(2);
             } else if plus_arc.get() == 2 {
@@ -170,21 +172,21 @@ fn main() -> Result<(), anyhow::Error> {
             play_arc.store(true, Ordering::Relaxed);
             play_flag_arc1.store(true, Ordering::Relaxed);
             println!("playing song: {:?}", entries[n.get()]);
-            thread::sleep(time::Duration::from_millis(10000));
-            // }
+            // thread::sleep(time::Duration::from_millis(10000));
+            }
         }
     });
     let _stop_button_thread = thread::spawn(move || {
-        // let gpio = Gpio::new().unwrap();
-        // let mut pin = gpio.get(23).unwrap().into_input_pullup();
-        // pin.set_reset_on_drop(false);
-        thread::sleep(time::Duration::from_millis(5000));
+        let gpio = Gpio::new().unwrap();
+        let mut pin = gpio.get(23).unwrap().into_input_pullup();
+        pin.set_reset_on_drop(false);
+        // thread::sleep(time::Duration::from_millis(5000));
         loop {
             // if pin.read() == rppal::gpio::Level::Low {
             println!("playback stopped");
             stop_arc.store(false, Ordering::Relaxed);
             // }
-            thread::sleep(time::Duration::from_millis(10000));
+            // thread::sleep(time::Duration::from_millis(10000));
         }
     });
     // while !go_ahead.load(Ordering::Relaxed) {
