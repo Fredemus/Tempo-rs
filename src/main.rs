@@ -33,9 +33,9 @@ use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
 use rustfft::FFTplanner;
 
-// extern crate rppal; // <- rppal only works on linux
-// use rppal::gpio::Gpio;
-// use rppal::uart::{Parity, Uart};
+extern crate rppal; // <- rppal only works on linux
+use rppal::gpio::Gpio;
+use rppal::uart::{Parity, Uart};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[allow(dead_code)]
@@ -187,9 +187,9 @@ fn main() -> Result<(), anyhow::Error> {
             thread::sleep(time::Duration::from_millis(10000));
         }
     });
-    while !go_ahead.load(Ordering::Relaxed) {
-        thread::sleep(time::Duration::from_millis(250));
-    }
+    // while !go_ahead.load(Ordering::Relaxed) {
+    //     thread::sleep(time::Duration::from_millis(250));
+    // }
     let mut transient_iter = 0;
     let mut curr_trans = 0;
     // rhythm and sample_iter is to bring sound's samples and transient information properly into the scope of event_loop
@@ -202,7 +202,9 @@ fn main() -> Result<(), anyhow::Error> {
     let fft = planner.plan_fft(1536);
     let mut output: Vec<Complex<f32>> = vec![Complex::zero(); 1536];
     let mut count = 0;
-    // let mut uart = Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2);
+    //let mut uart = Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2).unwrap();
+    let mut dmx = dmx::DMX::default();
+    //uart.set_write_mode(false)?; // this is default
     // event_loop.run takes control of the main thread and turns it into a playback thread
     event_loop.run(move |id, result| {
         // this if statement evaluates to true when a new song is being played
@@ -303,20 +305,27 @@ fn main() -> Result<(), anyhow::Error> {
 
                                     // Write output
 
-                                    let mut dmx = dmx::DMX::default();
+                                    
                                     dmx.change_color(bass, mid, high);
-                                    // uart.write(&dmx.msg[..]);
+                                
                                 }
                                 if transient_iter >= rhythm[curr_trans * 2] as usize
                                     && curr_trans * 2 + 1 < rhythm.len()
                                 {
                                     // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
-                                    println!(
-                                        "now there's a transient with volume {} ",
-                                        rhythm[curr_trans * 2 + 1] as f32 / std::i32::MAX as f32
-                                    ); // FIXME: Replace with what we actually send out sound with
+                                    
+                                    dmx.simple_move(rhythm[curr_trans * 2 + 1]);
+                                    
+                            
                                     transient_iter = 0;
                                     curr_trans += 1;
+                                    
+                                }
+                                if transient_iter >= (rhythm[curr_trans * 2]/2) as usize
+                                    && curr_trans * 2 + 1 < rhythm.len(){
+                                    
+                                    dmx.change_dir();
+                                    
                                 }
                                 transient_iter += 1;
                                 for out in sample.iter_mut() {
