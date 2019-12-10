@@ -2,10 +2,10 @@ extern crate rppal; //<- rppal only works on linux
 use rppal::uart::{Parity, Uart};
 #[allow(dead_code)]
 pub struct DMX {
-    pub msg: Vec<u8>, 
+    pub msg: Vec<u8>,
     uart: rppal::uart::Uart,
     pub colour: Vec<u8>,
-    angle: u8
+    angle: u8,
 }
 
 impl Default for DMX {
@@ -90,8 +90,7 @@ impl DMX {
         self.uart.write(&self.msg[..]).unwrap();
     }
 
-    pub fn change_dir(&mut self) {
-        
+    pub fn simple_move_back(&mut self) {
         self.msg[1] = self.angle;
         self.msg[6] = self.angle;
 
@@ -101,7 +100,7 @@ impl DMX {
         self.uart.write(&self.msg[..]).unwrap();
     }
 
-    pub fn left_right_move(&mut self){
+    pub fn left_right_move(&mut self) {
         //directions
         self.msg[2] = 0b00000010;
         self.msg[7] = 0b00000010;
@@ -109,7 +108,7 @@ impl DMX {
         self.uart.write(&self.msg[..]).unwrap();
     }
 
-    pub fn left_right_dir(&mut self){
+    pub fn left_right_dir(&mut self) {
         self.msg[2] = self.msg[2] ^ 0b00000010;
         self.msg[7] = self.msg[7] ^ 0b00000010;
 

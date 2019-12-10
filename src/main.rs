@@ -112,7 +112,6 @@ fn main() -> Result<(), anyhow::Error> {
     let play_flag_arc1 = Arc::new(AtomicBool::new(false));
     let play_flag_arc2 = Arc::clone(&play_flag_arc1);
 
-    
     let _plus_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
         let mut pin = gpio.get(25).unwrap().into_input_pullup();
@@ -132,7 +131,6 @@ fn main() -> Result<(), anyhow::Error> {
             if pin.read() == rppal::gpio::Level::Low {
                 minus_arc.set(minus_arc.get() - 1);
                 thread::sleep(time::Duration::from_millis(250));
-
             }
         }
     });
@@ -150,29 +148,29 @@ fn main() -> Result<(), anyhow::Error> {
         pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low {
-            if plus_arc.get() == 0 {
-                plus_arc.set(2);
-            } else if plus_arc.get() == 2 {
-                plus_arc.set(4);
-            } else {
-                plus_arc.set(0);
-            }
+                if plus_arc.get() == 0 {
+                    plus_arc.set(2);
+                } else if plus_arc.get() == 2 {
+                    plus_arc.set(4);
+                } else {
+                    plus_arc.set(0);
+                }
 
-            let mut lock = sound_arc.try_lock();
-            if let Ok(ref mut mutex) = lock {
-                mutex.load_sound(entries[n.get()].clone());
-                println!("sound loaded with sound_arc");
-                mutex.read_analysis_file();
-                println!("analysis file read");
-            } else {
-                println!("try_lock for loading sound failed");
-            }
-            drop(lock);
-            //raise flag to update the iterator
-            play_arc.store(true, Ordering::Relaxed);
-            play_flag_arc1.store(true, Ordering::Relaxed);
-            println!("playing song: {:?}", entries[n.get()]);
-            // thread::sleep(time::Duration::from_millis(10000));
+                let mut lock = sound_arc.try_lock();
+                if let Ok(ref mut mutex) = lock {
+                    mutex.load_sound(entries[n.get()].clone());
+                    println!("sound loaded with sound_arc");
+                    mutex.read_analysis_file();
+                    println!("analysis file read");
+                } else {
+                    println!("try_lock for loading sound failed");
+                }
+                drop(lock);
+                //raise flag to update the iterator
+                play_arc.store(true, Ordering::Relaxed);
+                play_flag_arc1.store(true, Ordering::Relaxed);
+                println!("playing song: {:?}", entries[n.get()]);
+                // thread::sleep(time::Duration::from_millis(10000));
             }
         }
     });
@@ -251,7 +249,6 @@ fn main() -> Result<(), anyhow::Error> {
                                 fft_deque.pop_front();
                                 fft_deque.push_back(num::Complex::new(value.unwrap(), 0.));
 
-                                count += 1;
                                 if count == 4410 {
                                     // Main RGB code
                                     // let mut planner = FFTplanner::new(false);
@@ -262,15 +259,12 @@ fn main() -> Result<(), anyhow::Error> {
                                     let amps =
                                         output.iter().map(|x| x.norm_sqr()).collect::<Vec<f32>>();
                                     let mut amps_iter = amps.iter();
-
                                     let mut bass_sum = 0.;
                                     let mut mid_sum = 0.;
                                     let mut high_iter = 0.;
-
                                     let bass_bands = 4;
                                     let mid_bands = 100;
                                     let high_bands = 664;
-
                                     for _i in 1..bass_bands {
                                         // Do average of the first 4 values and send it out as HEX
                                         bass_sum += amps_iter.next().unwrap();
@@ -279,7 +273,6 @@ fn main() -> Result<(), anyhow::Error> {
                                     let avg_bass = bass_sum / (bass_bands as f32);
                                     let bass_ref = avg_bass / bass_max;
                                     let bass = 20. * bass_ref.log(10.);
-
                                     for _i in bass_bands..mid_bands {
                                         // Do average of the next 100 values and send it out as HEX
                                         mid_sum += amps_iter.next().unwrap();
@@ -288,7 +281,6 @@ fn main() -> Result<(), anyhow::Error> {
                                     let avg_mid = mid_sum / (mid_bands as f32);
                                     let mid_ref = avg_mid / mid_max;
                                     let mid = 20. * mid_ref.log(10.0);
-
                                     for _i in mid_bands..high_bands {
                                         // Do average over the last values and send out as HEX
                                         let x = amps_iter.next();
@@ -302,34 +294,28 @@ fn main() -> Result<(), anyhow::Error> {
                                     let avg_high = high_iter / (high_bands as f32);
                                     let high_ref = avg_high / high_max;
                                     let high = 20. * high_ref.log(10.0);
-
-                                    count = 0;
-
                                     // Write output
-
-                                    
                                     dmx.change_color(bass, mid, high);
-                                
+                                    // reset count
+                                    count = 0;
                                 }
-                                if transient_iter >= rhythm[curr_trans * 2] as usize
-                                    && curr_trans * 2 + 1 < rhythm.len()
-                                {
-                                    // Send uart message with sound.analysis.rhythm[curr_trans * 2 - 1];
-                                    
-                                    dmx.simple_move(rhythm[curr_trans * 2 + 1]);
-                                    
-                            
-                                    transient_iter = 0;
-                                    curr_trans += 1;
-                                    
+                                // Sending a move message on transient
+                                if curr_trans * 2 + 1 < rhythm.len() {
+                                    if transient_iter >= rhythm[curr_trans * 2] as usize {
+                                        dmx.simple_move(rhythm[curr_trans * 2 + 1]);
+                                        transient_iter = 0;
+                                        curr_trans += 1;
+                                    }
+                                    // Moving back to position halfway to next transient
+                                    else if transient_iter
+                                        == (rhythm[curr_trans * 2] / 2) as usize
+                                    {
+                                        dmx.simple_move_back();
+                                    }
                                 }
-                                if transient_iter >= (rhythm[curr_trans * 2]/2) as usize
-                                    && curr_trans * 2 + 1 < rhythm.len(){
-                                    
-                                    dmx.change_dir();
-                                    
-                                }
+
                                 transient_iter += 1;
+                                count += 1;
                                 for out in sample.iter_mut() {
                                     // println!("playing sample");
                                     *out = value.unwrap();
