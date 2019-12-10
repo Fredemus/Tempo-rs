@@ -1,8 +1,9 @@
-//extern crate rppal; //<- rppal only works on linux
-//use rppal::uart::{Parity, Uart};
+extern crate rppal; //<- rppal only works on linux
+use rppal::uart::{Parity, Uart};
 #[allow(dead_code)]
 pub struct DMX {
-    pub msg: Vec<u8>, //uart: Result<rppal::uart, rppal::uart::Error>,
+    pub msg: Vec<u8>, 
+    uart: rppal::uart::Uart,
     pub colour: Vec<u8>,
     angle: u8
 }
@@ -11,7 +12,7 @@ impl Default for DMX {
     fn default() -> DMX {
         DMX {
             msg: vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            //uart: Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2),
+            uart: Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2).unwrap(),
             colour: vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             angle: 0,
         }
@@ -28,8 +29,11 @@ impl DMX {
         self.msg[1] = self.angle;
         self.msg[6] = self.angle;
         //setting up direction
+        //maybe use char instead so we can send u, d, l or r instead
         self.msg[2] = 0b00000001;
         self.msg[7] = 0b00000001;
+
+        self.uart.write(&self.msg[..]).unwrap();
         //FIXME: Color choice should probably be handled here by nicho but not sure
     }
     pub fn change_color(&mut self, bass: f32, mid: f32, high: f32) {
@@ -82,22 +86,34 @@ impl DMX {
 
         self.msg[1] = 0;
         self.msg[6] = 0;
+
+        self.uart.write(&self.msg[..]).unwrap();
     }
 
     pub fn change_dir(&mut self) {
+        
         self.msg[1] = self.angle;
         self.msg[6] = self.angle;
+
         self.msg[2] = self.msg[2] ^ 0b00000001;
         self.msg[7] = self.msg[7] ^ 0b00000001;
+
+        self.uart.write(&self.msg[..]).unwrap();
     }
 
     pub fn left_right_move(&mut self){
-        //movement
-        self.msg[1] = 90;
-        self.msg[6] = 90;
         //directions
         self.msg[2] = 0b00000010;
         self.msg[7] = 0b00000010;
+
+        self.uart.write(&self.msg[..]).unwrap();
+    }
+
+    pub fn left_right_dir(&mut self){
+        self.msg[2] = self.msg[2] ^ 0b00000010;
+        self.msg[7] = self.msg[7] ^ 0b00000010;
+
+        self.uart.write(&self.msg[..]).unwrap();
     }
 
     /*pub fn four_move(&mut self, transientlevel: i32)){ //prolly not possible, here should be made in main but its annoying to do???
