@@ -26,18 +26,15 @@ use std::{fs, thread, time};
 mod dmx;
 mod sound_file;
 mod util;
-
+mod rgb;
 // Nicho's crates:
 use std::collections::VecDeque;
-extern crate basic_dsp_vector;
 extern crate rustfft;
 use rustfft::num_complex::Complex;
-use rustfft::num_traits::Zero;
-use rustfft::FFTplanner;
 
 extern crate rppal; // <- rppal only works on linux
 use rppal::gpio::Gpio;
-use rppal::uart::{Parity, Uart};
+// use rppal::uart::{Parity, Uart};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[allow(dead_code)]
@@ -61,28 +58,31 @@ fn main() -> Result<(), anyhow::Error> {
         );
         return Ok(()); // FIXME: This really shouldn't be return Ok(()), but I can't be bothered figuring out anyhow right now
     }
-    println!("format sample rate is {}", sample_rate);
     // SoundFile setup
     let mut sound = sound_file::SoundFile::default();
+
     // grabbing all files in Songs and adding their paths to a vector
     let path = Path::new(r"./Songs");
+    // create a vector of file paths
     let mut entries: Vec<std::path::PathBuf> = vec![];
+    // add every file path in folder ./Songs to entries
     for entry in fs::read_dir(path).expect("Unable to list") {
         entries.push(entry.expect("unable to get entry").path());
     }
+    // check for analysis file on each
     for (i, entry) in entries.iter().enumerate() {
         sound.set_file_name(entries[i].clone());
         if !sound.search_for_file() {
             println!("please wait. analysing {}", entry.display());
             sound.load_sound(entries[i].clone());
-            sound.detect_transients_by_rms();
+            sound._detect_transients_by_stft();
             // sound._bpm_by_guess();
             sound._bpm_in_frames();
             sound.generate_analysis_file();
-            println!("BPM is {}", sound.analysis.get_tempo());
+            // println!("BPM is {}", sound.analysis.get_tempo());
         }
     }
-    println!("which of the songs do you want to play? Write a number.");
+    println!("which of the songs do you want to play?");
     for (i, entry) in entries.iter().enumerate() {
         println!("{}: {}", i, entry.display());
     }
@@ -96,7 +96,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     // creating atomic reference counting pointers for safely sharing data between threads
     // these 3 are for choosing sound. plus_arc and minus_arc lets plus and minus buttons change n
-    let n = Arc::new(util::AtomicUsize::new(0));
+    let n = Arc::new(util::AtomicUsize::new(4));
     let plus_arc = Arc::clone(&n);
     let minus_arc = Arc::clone(&n);
     // these 3 are to see if playback can start/continue
@@ -134,34 +134,25 @@ fn main() -> Result<(), anyhow::Error> {
             }
         }
     });
-
     // Nicho's fft_queue:
     let mut fft_deque: VecDeque<Complex<f32>> = VecDeque::new();
     // this for loop defines the length of the deque / fourier transform
     for _i in 0..1536 {
         fft_deque.push_back(num_complex::Complex::new(0., 0.));
     }
-
     let _play_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
         let mut pin = gpio.get().unwrap().into_input_pullup();
         pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low {
-                if plus_arc.get() == 0 {
-                    plus_arc.set(2);
-                } else if plus_arc.get() == 2 {
-                    plus_arc.set(4);
-                } else {
-                    plus_arc.set(0);
-                }
-
                 let mut lock = sound_arc.try_lock();
                 if let Ok(ref mut mutex) = lock {
                     mutex.load_sound(entries[n.get()].clone());
                     println!("sound loaded with sound_arc");
                     mutex.read_analysis_file();
                     println!("analysis file read");
+                    println!("tempo is {}", mutex.analysis.get_tempo());
                 } else {
                     println!("try_lock for loading sound failed");
                 }
@@ -170,7 +161,7 @@ fn main() -> Result<(), anyhow::Error> {
                 play_arc.store(true, Ordering::Relaxed);
                 play_flag_arc1.store(true, Ordering::Relaxed);
                 println!("playing song: {:?}", entries[n.get()]);
-                // thread::sleep(time::Duration::from_millis(10000));
+                thread::sleep(time::Duration::from_millis(10000));
             }
         }
     });
@@ -181,15 +172,14 @@ fn main() -> Result<(), anyhow::Error> {
         // thread::sleep(time::Duration::from_millis(5000));
         loop {
             // if pin.read() == rppal::gpio::Level::Low {
-            println!("playback stopped");
             stop_arc.store(false, Ordering::Relaxed);
             // }
             // thread::sleep(time::Duration::from_millis(10000));
         }
     });
-    // while !go_ahead.load(Ordering::Relaxed) {
-    //     thread::sleep(time::Duration::from_millis(250));
-    // }
+    while !go_ahead.load(Ordering::Relaxed) {
+        thread::sleep(time::Duration::from_millis(250));
+    }
     let mut transient_iter = 0;
     let mut curr_trans = 0;
     // rhythm and sample_iter is to bring sound's samples and transient information properly into the scope of event_loop
@@ -198,13 +188,9 @@ fn main() -> Result<(), anyhow::Error> {
     let mut sample_iter = dummy_vec.into_iter();
     // Nicho's RGB variables
     // Main RGB code
-    let mut planner = FFTplanner::new(false);
-    let fft = planner.plan_fft(1536);
-    let mut output: Vec<Complex<f32>> = vec![Complex::zero(); 1536];
     let mut count = 0;
-    //let mut uart = Uart::with_path("/dev/ttyAMA0", 115_200, Parity::None, 8, 2).unwrap();
+    let mut rgb = rgb::RGB::default();
     let mut dmx = dmx::DMX::default();
-    //uart.set_write_mode(false)?; // this is default
     // event_loop.run takes control of the main thread and turns it into a playback thread
     event_loop.run(move |id, result| {
         // this if statement evaluates to true when a new song is being played
@@ -251,52 +237,10 @@ fn main() -> Result<(), anyhow::Error> {
 
                                 if count == 4410 {
                                     // Main RGB code
-                                    // let mut planner = FFTplanner::new(false);
-                                    // let fft = planner.plan_fft(1536);
-                                    let mut _fft_vec: Vec<Complex<f32>> =
-                                        Vec::from(fft_deque.clone());
-                                    fft.process(&mut _fft_vec, &mut output);
-                                    let amps =
-                                        output.iter().map(|x| x.norm_sqr()).collect::<Vec<f32>>();
-                                    let mut amps_iter = amps.iter();
-                                    let mut bass_sum = 0.;
-                                    let mut mid_sum = 0.;
-                                    let mut high_iter = 0.;
-                                    let bass_bands = 4;
-                                    let mid_bands = 100;
-                                    let high_bands = 664;
-                                    for _i in 1..bass_bands {
-                                        // Do average of the first 4 values and send it out as HEX
-                                        bass_sum += amps_iter.next().unwrap();
-                                    }
-                                    let bass_max = 10000.; // The denominator is chosen from max observed value of the fft
-                                    let avg_bass = bass_sum / (bass_bands as f32);
-                                    let bass_ref = avg_bass / bass_max;
-                                    let bass = 20. * bass_ref.log(10.);
-                                    for _i in bass_bands..mid_bands {
-                                        // Do average of the next 100 values and send it out as HEX
-                                        mid_sum += amps_iter.next().unwrap();
-                                    }
-                                    let mid_max = 8000.; // The denominator is chosen from max observed value of the fft
-                                    let avg_mid = mid_sum / (mid_bands as f32);
-                                    let mid_ref = avg_mid / mid_max;
-                                    let mid = 20. * mid_ref.log(10.0);
-                                    for _i in mid_bands..high_bands {
-                                        // Do average over the last values and send out as HEX
-                                        let x = amps_iter.next();
-                                        if x == None {
-                                            break;
-                                        }
-                                        high_iter += x.unwrap();
-                                        break;
-                                    }
-                                    let high_max = 0.99; // The denominator is chosen from max observed value of the fft
-                                    let avg_high = high_iter / (high_bands as f32);
-                                    let high_ref = avg_high / high_max;
-                                    let high = 20. * high_ref.log(10.0);
+                                    rgb.rgb_fft(Vec::from(fft_deque.clone()));
+                                    count = 0;
                                     // Write output
-                                    dmx.change_color(bass, mid, high);
-                                    // reset count
+                                    dmx.change_color(rgb.get_bass(), rgb.get_mid(), rgb.get_high());
                                     count = 0;
                                 }
                                 // Sending a move message on transient
@@ -305,6 +249,7 @@ fn main() -> Result<(), anyhow::Error> {
                                         dmx.simple_move(rhythm[curr_trans * 2 + 1]);
                                         transient_iter = 0;
                                         curr_trans += 1;
+                                        println!("transient number {}", curr_trans);
                                     }
                                     // Moving back to position halfway to next transient
                                     else if transient_iter
@@ -313,7 +258,6 @@ fn main() -> Result<(), anyhow::Error> {
                                         dmx.simple_move_back();
                                     }
                                 }
-
                                 transient_iter += 1;
                                 count += 1;
                                 for out in sample.iter_mut() {

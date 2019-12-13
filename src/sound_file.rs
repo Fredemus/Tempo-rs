@@ -9,11 +9,16 @@ use std::i32;
 use std::io::prelude::*;
 use std::io::Cursor;
 
-// note: static variables are thread-local
+extern crate rustfft;
+use rustfft::num_complex::Complex;
 // global variables for tweaking how the detection works
 static AVG_LEN: usize = 768;
-static SKIP_AMT: usize = 4096; // SKIP_AMT should never be less than AVG_LEN
-static SENSITIVITY: f32 = 0.7; // lower is more sensitive
+static SKIP_AMT: usize = 4096 * 2; // SKIP_AMT should never be less than AVG_LEN
+static _SENSITIVITY: f32 = 0.7; // lower is more sensitive
+// global variable for energy-based detection
+static FFT_SIZE: usize = 1024;
+static THRESHOLD: f32 = 1.125;
+#[allow(dead_code)]
 pub struct SoundFile {
     /// Sound samples
     pub samples: Vec<f32>,
@@ -21,12 +26,27 @@ pub struct SoundFile {
     file_name: std::path::PathBuf,
     fs: usize,
     power_buf: VecDeque<f32>,
+    fft_buf: VecDeque<Complex<f32>>,
     pub analysis: Analysis,
     transient_no: usize,
     transient_gap: usize,
 }
-// #[allow(dead_code)]
+#[allow(dead_code)]
 impl SoundFile {
+    pub fn window(&self, len: usize) -> Vec<f32> {
+        let lenfloat = len as f32;
+        let func = |n : f32| -> f32 {
+            0.35875 - 0.48829 * (2. * 3.1415 * n / lenfloat).cos() 
+            + 0.14128 * (4. * 3.1415 * n / lenfloat).cos() 
+            - 0.01168 * (4. * 3.1415 * n / lenfloat).cos()
+        };
+        let mut window = vec![0.;len];
+        for i in 0..len {
+            window[i] = func(i as f32);
+        } 
+        window
+    }
+
     pub fn load_sound(&mut self, path: std::path::PathBuf) {
         self.file_name = path;
         self.file_name.set_extension("wav");
@@ -49,8 +69,7 @@ impl SoundFile {
             .create(true)
             .open(&self.file_name)
             .expect("Filen kunne ikke åbnes");
-        // file should be filled with the attributes in the AnalysisFile created
-        // writing the vector into the analysis file with endianness specified. Should be safe?
+        // getting the vector as a slice
         let slice_i32: &[i32] = &*self.analysis.rhythm;
         //writing in bpm
         let _ = file
@@ -63,6 +82,7 @@ impl SoundFile {
                 .expect("Der kunne ikke skrives til filen");
         }
     }
+
     pub fn read_analysis_file(&mut self) {
         let mut file = OpenOptions::new()
             .read(true)
@@ -73,28 +93,21 @@ impl SoundFile {
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer).expect("couldn't read file");
         let num_u8 = buffer.len();
-        //reading the raw bytes into rhythm
+        // preparing a reader and rhythm
         let mut reader = Cursor::new(buffer);
         self.analysis.rhythm.clear();
         // reading in tempo as a f32
         self.analysis.tempo = reader.read_f32::<LittleEndian>().unwrap();
-        // reading in analysis as i32
-        // FIXME: This might go out of scope since buffer is over u8
+        // reading in rhythm as Vec<i32>
         for _i in 0..(num_u8 - 4) / 4 {
             self.analysis
                 .rhythm
                 .push(reader.read_i32::<LittleEndian>().unwrap())
         }
-        // self.analysis.tempo = self.analysis.rhythm.remove(0);
     }
-
     fn _bpm_from_rhythm(&mut self) {
         let transientsum = self.analysis.rhythm.len() / 2;
-        // for i in 0..self.analysis.rhythm.len() {
-        //     if self.analysis.rhythm[i] != 0. {
-        //         transientsum += 1;
-        //     }
-        // }
+
         println!("transientsum is {}!", transientsum);
         println!(
             "number of minutes is {}!",
@@ -117,18 +130,20 @@ impl SoundFile {
     pub fn _bpm_in_frames(&mut self) {
         let mut bpm_frames: Vec<f32> = vec![];
         // i * 2, since every second entry determines space between transients
+        // println!("analysis : {:?}", self.analysis.rhythm);
         for i in 1..self.analysis.rhythm.len() / 2 {
             bpm_frames.push(self.fs as f32 / self.analysis.rhythm[i * 2] as f32 * 60.);
             // println!("bpm [i] is: {}", bpm_frames[bpm_frames.len() - 1]);
         }
-        // filtering out frames with a bpm over 300 FIXME: Maybe filter out too low bpms too?
-        // for (i, element) in bpm_frames.iter().enumerate() {
+
+        // filtering out frames with a bpm over 300 or lower than 25
         let mut toberemoved: Vec<usize> = vec![];
         for i in 0..bpm_frames.len() {
-            if bpm_frames[i] > 300. {
+            if bpm_frames[i] > 200. || bpm_frames[i] < 25. {
                 toberemoved.push(i);
             }
         }
+        println!("bpm in frames: {:?}", bpm_frames);
         //remove in reverse direction so we don't remove the wrong ones because of right-shift
         for i in toberemoved.iter().rev() {
             bpm_frames.remove(*i);
@@ -137,8 +152,9 @@ impl SoundFile {
         bpm_frames.sort_by(|a, b| a.partial_cmp(b).unwrap());
         // Finding the median tempo
         self.analysis.tempo = bpm_frames[(bpm_frames.len() / 2)];
+        println!("Tempo: {} bpm", self.analysis.get_tempo());
     }
-    pub fn detect_transients_by_rms(&mut self) {
+    pub fn _detect_transients_by_rms(&mut self) {
         self.analysis.rhythm.clear();
         let mut short_rms: f32;
         self.transient_gap = 0;
@@ -153,7 +169,7 @@ impl SoundFile {
             short_rms = (self.power_buf.iter().map(|&x| x).sum::<f32>()
                 / self.power_buf.len() as f32)
                 .sqrt();
-            if current_sample.1.abs() - short_rms > SENSITIVITY
+            if current_sample.1.abs() - short_rms > _SENSITIVITY
             // && self.transient_gap > AVG_LEN
             {
                 // pushing in the amplitude of the transient and how many samples passed since last transient
@@ -195,6 +211,64 @@ impl SoundFile {
         }
         println!("Sum is {}", self.transient_no);
     }
+    // FIXME: Needs skip forward
+    pub fn _detect_transients_by_stft(&mut self) {
+        self.analysis.rhythm.clear();
+
+        let mut iter = self.samples.iter().enumerate();
+        let mut current: Option<(usize, &f32)> = iter.next();
+        let mut planner = rustfft::FFTplanner::<f32>::new(false);
+        let fft = planner.plan_fft(FFT_SIZE);
+        let mut energy: [f32; 3] = [0., 0., 0.];
+        println!("THRESHOLD is: {}", THRESHOLD);
+        self.transient_gap = 0;
+        self.transient_no = 0;
+        while current != None {
+            // creating a vec from the deque
+            let mut _fft_vec: Vec<Complex<f32>> = Vec::from(self.fft_buf.clone());
+            // let window = self.window(FFT_SIZE);
+            // //windowing fft_vec
+            // for i in 0.._fft_vec.len() {
+            //     _fft_vec[i] = _fft_vec[i].scale(window[i]); 
+            // }
+            // doing the actual fft
+            let mut output: Vec<Complex<f32>> = vec![Complex::new(0., 0.); FFT_SIZE];
+            fft.process(&mut _fft_vec, &mut output);
+            // move energies one frame back
+            energy[2] = energy[1];
+            energy[1] = energy[0];
+            energy[0] = 0.;
+            // summing up energy of bands disregarding bands above nyquist
+            for i in 0..FFT_SIZE / 2 {
+                energy[0] += output[i].norm_sqr();
+            }
+            // if the energy has increased in the last 2 frames
+            if energy[0] > energy[1] && energy[1] > energy[2]  
+            // if the energy increase is large enough (determined by threshold and 2 frames ago)
+            && energy[0] > energy[2] * THRESHOLD 
+            // no transients for the duration of skip_amt
+            && self.transient_gap > SKIP_AMT {
+                // pushing in the amplitude of the transient and how many samples passed since last transient
+                self.analysis.rhythm.push(self.transient_gap as i32 + 1);
+                self.analysis.rhythm.push(((energy[0] - energy[2]) * i32::MAX as f32) as i32);
+                // println!("analysis len: {}", self.analysis.rhythm.len());
+                self.transient_no += 1;
+                self.transient_gap = 0;
+            }
+            // skipping 10 samples ahead. sacrificing a bit of precision for a lot of speed
+            for _i in 0..10 {
+                self.transient_gap += 1;
+                current = iter.next();
+                if current != None {
+                    self.fft_buf.pop_front();
+                    self.fft_buf
+                        .push_back(num::Complex::new(*current.unwrap().1, 0.));
+                }
+            }
+        }
+        println!("Sum is {}", self.transient_no);
+    }
+
     pub fn _bpm_by_guess(&mut self) {
         // creating a vec with only the distances to make our lives easier
         let dists: Vec<isize> = self
@@ -272,11 +346,16 @@ impl Default for SoundFile {
         for _i in 0..AVG_LEN {
             vecdeque.push_back(0.);
         }
+        let mut fft_deque = VecDeque::new();
+        for _i in 0..FFT_SIZE {
+            fft_deque.push_back(num_complex::Complex::new(0., 0.));
+        }
         SoundFile {
             samples: vec![0.],
             file_name: std::path::PathBuf::new(),
             fs: 44100,
             power_buf: vecdeque,
+            fft_buf: fft_deque,
             analysis: Analysis::default(),
             transient_no: 0,
             transient_gap: 0,
