@@ -37,7 +37,6 @@ impl Default for RGB{
 }
 #[allow(dead_code)]
 impl RGB{
-
     pub fn rgb_fft(&mut self, mut input: Vec<Complex<f32>>){
         let fft = rustfft::FFTplanner::new(false).plan_fft(1536);
 

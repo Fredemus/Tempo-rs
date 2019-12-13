@@ -111,7 +111,7 @@ fn main() -> Result<(), anyhow::Error> {
     // for refreshing the iterater when starting a new song
     let play_flag_arc1 = Arc::new(AtomicBool::new(false));
     let play_flag_arc2 = Arc::clone(&play_flag_arc1);
-
+//
     let _plus_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
         let mut pin = gpio.get(25).unwrap().into_input_pullup();
