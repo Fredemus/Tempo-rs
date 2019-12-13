@@ -52,7 +52,6 @@ impl RGB{
             // Do average of the first 4 values and send it out as HEX
             bass_sum += amps_iter.next().unwrap();
         }
-
         for _i in self.bass_bands..self.mid_bands {
             // Do average of the next 100 values and send it out as HEX
             mid_sum += amps_iter.next().unwrap();

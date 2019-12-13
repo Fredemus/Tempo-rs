@@ -2,6 +2,19 @@
 // FIXME: Would be nice to have a wrapper over AtomicBool
 use std::sync::atomic::{self, Ordering};
 
+pub struct AtomicBool(atomic::AtomicBool);
+impl AtomicBool {
+    pub fn new(v: bool) -> AtomicBool {
+        AtomicI8(atomic::AtomicBool::new(v))
+    }
+    pub fn get(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+    pub fn set(&self, v: bool) {
+        self.0.store(v, Ordering::Relaxed)
+    }
+}
+
 /// Simple wrapper over `AtomicI8` with relaxed ordering.
 pub struct AtomicI8(atomic::AtomicI8);
 #[allow(dead_code)]

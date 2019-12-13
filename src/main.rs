@@ -100,7 +100,7 @@ fn main() -> Result<(), anyhow::Error> {
     let plus_arc = Arc::clone(&n);
     let minus_arc = Arc::clone(&n);
     // these 3 are to see if playback can start/continue
-    let go_ahead = Arc::new(AtomicBool::new(false));
+    let go_ahead = Arc::new(util::AtomicBool::new(false));
     let play_arc = Arc::clone(&go_ahead);
     let stop_arc = Arc::clone(&go_ahead);
 
@@ -109,7 +109,7 @@ fn main() -> Result<(), anyhow::Error> {
     let sound_arc_playback = Arc::clone(&sound_arc);
 
     // for refreshing the iterater when starting a new song
-    let play_flag_arc1 = Arc::new(AtomicBool::new(false));
+    let play_flag_arc1 = Arc::new(util::AtomicBool::new(false));
     let play_flag_arc2 = Arc::clone(&play_flag_arc1);
 //
     let _plus_button_thread = thread::spawn(move || {
@@ -134,15 +134,9 @@ fn main() -> Result<(), anyhow::Error> {
             }
         }
     });
-    // Nicho's fft_queue:
-    let mut fft_deque: VecDeque<Complex<f32>> = VecDeque::new();
-    // this for loop defines the length of the deque / fourier transform
-    for _i in 0..1536 {
-        fft_deque.push_back(num_complex::Complex::new(0., 0.));
-    }
     let _play_button_thread = thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let mut pin = gpio.get().unwrap().into_input_pullup();
+        let mut pin = gpio.get(18).unwrap().into_input_pullup();
         pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low {
@@ -158,8 +152,8 @@ fn main() -> Result<(), anyhow::Error> {
                 }
                 drop(lock);
                 //raise flag to update the iterator
-                play_arc.store(true, Ordering::Relaxed);
-                play_flag_arc1.store(true, Ordering::Relaxed);
+                play_arc.set(true);
+                play_flag_arc1.set(true);
                 println!("playing song: {:?}", entries[n.get()]);
                 thread::sleep(time::Duration::from_millis(10000));
             }
@@ -171,31 +165,32 @@ fn main() -> Result<(), anyhow::Error> {
         pin.set_reset_on_drop(false);
         // thread::sleep(time::Duration::from_millis(5000));
         loop {
-            // if pin.read() == rppal::gpio::Level::Low {
-            stop_arc.store(false, Ordering::Relaxed);
-            // }
+            if pin.read() == rppal::gpio::Level::Low {
+                stop_arc.set(false);
+            }
             // thread::sleep(time::Duration::from_millis(10000));
         }
     });
-    while !go_ahead.load(Ordering::Relaxed) {
-        thread::sleep(time::Duration::from_millis(250));
-    }
     let mut transient_iter = 0;
     let mut curr_trans = 0;
     // rhythm and sample_iter is to bring sound's samples and transient information properly into the scope of event_loop
     let mut rhythm: Vec<i32> = vec![0];
     let dummy_vec = vec![0.];
     let mut sample_iter = dummy_vec.into_iter();
+    let mut dmx = dmx::DMX::default();
     // Nicho's RGB variables
-    // Main RGB code
+    let mut fft_deque: VecDeque<Complex<f32>> = VecDeque::new();
+    // this for loop defines the length of the deque / fourier transform
+    for _i in 0..1536 {
+        fft_deque.push_back(num_complex::Complex::new(0., 0.));
+    }
     let mut count = 0;
     let mut rgb = rgb::RGB::default();
-    let mut dmx = dmx::DMX::default();
     // event_loop.run takes control of the main thread and turns it into a playback thread
     event_loop.run(move |id, result| {
         // this if statement evaluates to true when a new song is being played
         // lets us update sample_iter and and rhythm safely
-        if play_flag_arc2.load(Ordering::Relaxed) {
+        if play_flag_arc2.get() {
             println!("updating iter");
             // for cloning samples vector and creating an iterator over it
             let sound_guard = sound_arc_playback.lock().unwrap();
@@ -222,7 +217,7 @@ fn main() -> Result<(), anyhow::Error> {
                     buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
                 } => {
                     for sample in buffer.chunks_mut(format.channels as usize) {
-                        if !go_ahead.load(Ordering::Relaxed) {
+                        if !go_ahead.get() {
                             for out in sample.iter_mut() {
                                 *out = 0.;
                             }
