@@ -1,15 +1,10 @@
 /*
     TODO: top is most important
     Make buttons trigger only on rising edge
-    improved transient formula
     Best guess bpm algo
     Program crashes in bpm_by_frames if the file doesn't have any transients
-    RGB shit should really be in a struct in its own file
-
     IDEAS:
     Maybe a "best guess" based algorithm, where it cycles through bpms to see which best fits the transients
-    Idea for a pattern: If there's no transients for a while, slowly sweep up when short-time RMS increases
-    parallelize by not loading the entire wav at once and just use the samples iterator?
 
 */
 /// This project is meant for opening a wave file and calculating its tempo. Meant as a prototype
@@ -104,19 +99,21 @@ fn main() -> Result<(), anyhow::Error> {
     let play_arc = Arc::clone(&go_ahead);
     let stop_arc = Arc::clone(&go_ahead);
 
-    // for passing and editing sound so we can change sound
+    // for passing and editing the SoundFile struct so we can change song
     let sound_arc = Arc::new(Mutex::new(sound));
     let sound_arc_playback = Arc::clone(&sound_arc);
 
     // for refreshing the iterater when starting a new song
     let play_flag_arc1 = Arc::new(util::AtomicBool::new(false));
     let play_flag_arc2 = Arc::clone(&play_flag_arc1);
-//
+    // Creation of threads
     let _plus_button_thread = thread::spawn(move || {
+        // GPIO pin setup
         let gpio = Gpio::new().unwrap();
         let mut pin = gpio.get(25).unwrap().into_input_pullup();
         pin.set_reset_on_drop(false);
         loop {
+            // If button is pressed
             if pin.read() == rppal::gpio::Level::Low {
                 plus_arc.set(plus_arc.get() + 1);
                 thread::sleep(time::Duration::from_millis(250));
@@ -140,7 +137,9 @@ fn main() -> Result<(), anyhow::Error> {
         pin.set_reset_on_drop(false);
         loop {
             if pin.read() == rppal::gpio::Level::Low {
+                // Lock the mutex connected to sound_arc
                 let mut lock = sound_arc.try_lock();
+                // If lock was successful
                 if let Ok(ref mut mutex) = lock {
                     mutex.load_sound(entries[n.get()].clone());
                     println!("sound loaded with sound_arc");
@@ -151,11 +150,12 @@ fn main() -> Result<(), anyhow::Error> {
                     println!("try_lock for loading sound failed");
                 }
                 drop(lock);
-                //raise flag to update the iterator
+                //raise flag to update the iterator in main thread
                 play_arc.set(true);
                 play_flag_arc1.set(true);
+                // printing what song is being played
                 println!("playing song: {:?}", entries[n.get()]);
-                thread::sleep(time::Duration::from_millis(10000));
+                thread::sleep(time::Duration::from_millis(250));
             }
         }
     });
@@ -163,12 +163,12 @@ fn main() -> Result<(), anyhow::Error> {
         let gpio = Gpio::new().unwrap();
         let mut pin = gpio.get(23).unwrap().into_input_pullup();
         pin.set_reset_on_drop(false);
-        // thread::sleep(time::Duration::from_millis(5000));
         loop {
             if pin.read() == rppal::gpio::Level::Low {
                 stop_arc.set(false);
+                println!("playback stopped");
+                thread::sleep(time::Duration::from_millis(250));
             }
-            // thread::sleep(time::Duration::from_millis(10000));
         }
     });
     let mut transient_iter = 0;
@@ -184,6 +184,7 @@ fn main() -> Result<(), anyhow::Error> {
     for _i in 0..1536 {
         fft_deque.push_back(num_complex::Complex::new(0., 0.));
     }
+    // count is used to know when to send color messages 
     let mut count = 0;
     let mut rgb = rgb::RGB::default();
     // event_loop.run takes control of the main thread and turns it into a playback thread
@@ -227,9 +228,9 @@ fn main() -> Result<(), anyhow::Error> {
                                 // print!("song over");
                                 break;
                             } else {
+                                // move new sample into the deque
                                 fft_deque.pop_front();
                                 fft_deque.push_back(num::Complex::new(value.unwrap(), 0.));
-
                                 if count == 4410 {
                                     // Main RGB code
                                     rgb.rgb_fft(Vec::from(fft_deque.clone()));
@@ -246,7 +247,7 @@ fn main() -> Result<(), anyhow::Error> {
                                         curr_trans += 1;
                                         println!("transient number {}", curr_trans);
                                     }
-                                    // Moving back to position halfway to next transient
+                                    // Moving back to previous position halfway to next transient
                                     else if transient_iter
                                         == (rhythm[curr_trans * 2] / 2) as usize
                                     {
@@ -255,6 +256,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                                 transient_iter += 1;
                                 count += 1;
+                                // sending the same sample out to all channels (2 if stereo)
                                 for out in sample.iter_mut() {
                                     // println!("playing sample");
                                     *out = value.unwrap();

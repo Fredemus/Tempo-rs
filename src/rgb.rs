@@ -86,13 +86,13 @@ impl RGB{
         let high_ref = avg_high / self.high_max;
         self.high = 20.*high_ref.log(10.0);
     }
-    pub fn get_bass(&self)->f32 {
+    pub fn get_bass(&self)-> f32 {
         self.bass
     }
-    pub fn get_mid(&self)->f32 {
+    pub fn get_mid(&self)-> f32 {
         self.mid
     }
-    pub fn get_high(&self)->f32 {
+    pub fn get_high(&self)-> f32 {
         self.high
     }
 }

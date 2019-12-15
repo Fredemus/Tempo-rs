@@ -29,9 +29,7 @@ impl DMX {
         //maybe use char instead so we can send u, d, l or r instead
         self.msg[2] = 0b00000001;
         self.msg[7] = 0b00000001;
-
         self.uart.write(&self.msg[..]).unwrap();
-        //FIXME: Color choice should probably be handled here by nicho but not sure
     }
     pub fn change_color(&mut self, bass: f32, mid: f32, high: f32) {
         bass.min(0.);
@@ -91,7 +89,6 @@ impl DMX {
         //directions
         self.msg[2] = 0b00000010;
         self.msg[7] = 0b00000010;
-
         self.uart.write(&self.msg[..]).unwrap();
     }
     pub fn left_right_back(&mut self) {
@@ -100,7 +97,7 @@ impl DMX {
 
         self.uart.write(&self.msg[..]).unwrap();
     }
-    /*pub fn four_move(&mut self, transientlevel: i32)){ //prolly not possible, here should be made in main but its annoying to do???
+    /*pub fn four_move(&mut self, transientlevel: i32)){ //prolly not possible, here should be made in main, or have a dmx thread
         let level_u8: u8 = ((transientlevel as f32 / std::i32::MAX as f32) * 255 as f32) as u8;
 
         self.msg[1] = level_u8;

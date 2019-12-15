@@ -33,6 +33,7 @@ pub struct SoundFile {
 }
 #[allow(dead_code)]
 impl SoundFile {
+    // Returns a blackman-harris window
     pub fn window(&self, len: usize) -> Vec<f32> {
         let lenfloat = len as f32;
         let func = |n : f32| -> f32 {
@@ -211,7 +212,6 @@ impl SoundFile {
         }
         println!("Sum is {}", self.transient_no);
     }
-    // FIXME: Needs skip forward
     pub fn _detect_transients_by_stft(&mut self) {
         self.analysis.rhythm.clear();
 
